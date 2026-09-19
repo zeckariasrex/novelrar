@@ -6,7 +6,8 @@ machine-level copy experiments. Original code is MIT. Independent development
 and documented provenance are goals; no patent clearance or algorithmic
 novelty is claimed.
 
-See [the implementation and measured-results report](docs/RESEARCH_REPORT.md),
+`main` is the accepted line. See [status](docs/STATUS.md),
+[the implementation and measured-results report](docs/RESEARCH_REPORT.md),
 [format boundaries](docs/BOUNDARY.md), and [dependency provenance](docs/LICENSING.md).
 
 ## Implemented capabilities
@@ -29,6 +30,10 @@ implemented in-tree.** NRX1 is a distinct format, not RAR/ZIP/7z encryption.
 WinZip AES is still unsupported. The built-in 7z reader still rejects AES,
 BCJ2, PPMd and Zstd; explicit `py7zr` selection supports that backend's subset.
 
+The default capability probe still refuses passworded and compressed-RAR
+fixtures. That is the unattended policy, not a claim that supplied-password
+ZIP/7z paths do not exist. See `results/capability_matrix.md`.
+
 ## Install and build
 
 ```bash
@@ -42,6 +47,8 @@ python scripts/build_native.py
 Native code is never compiled automatically on import. Python decoding remains
 available without a compiler. Assembly uses System V AMD64 `rep movsb`; SSE2
 uses bounded unaligned vector loads/stores. ARM uses C scalar/growing-copy modes.
+Growing-copy is the default experimental backend because it won the repetitive
+LZ4 samples; `asm` is available and is not uniformly faster.
 
 ## CLI examples
 
@@ -76,6 +83,7 @@ python scripts/build_native.py
 PYTHONPATH=src python -m unittest discover -s tests -v
 PYTHONPATH=src python tests/capability_probe.py
 PYTHONPATH=src python scripts/benchmark_research.py
+mkdir -p build
 cc -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer native/lz4_decode.c native/repeat_x86_64.S native/sanitize_test.c -o build/sanitize_test
 ./build/sanitize_test
 ```

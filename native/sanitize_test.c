@@ -22,6 +22,7 @@ int main(void) {
             if(r!=rc || (!r && (got!=expected || memcmp(reference,output,prefix+got)))) abort();
         }
     }
+    puts("50000 malformed-LZ4 trials x 4 strategies: no sanitizer errors or disagreements");
     for(int trial=0;trial<10000;trial++) {
         struct nr_command c[2]={{0,1,1,rnd()%5000},{rnd()%300,rnd()%100,1,rnd()%100}};
         size_t n=0; memset(reference,0,sizeof(reference));
@@ -33,6 +34,5 @@ int main(void) {
         }
     }
     puts("10000 shared-IR trials x 4 strategies: no sanitizer errors or disagreements");
-    puts("50000 malformed-input trials x 4 strategies: no sanitizer errors or disagreements");
     return 0;
 }
