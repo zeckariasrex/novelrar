@@ -12,11 +12,11 @@ No unrar / 7-Zip / LZ4 source.
 """
 from __future__ import annotations
 
-import json, math
+import json, math, os
 from pathlib import Path
 import numpy as np
 
-ART = Path("/home/workdir/artifacts")
+ART = Path(os.environ.get("NOVELRAR_ARTIFACTS", "artifacts"))
 
 
 def lis_len(seq):

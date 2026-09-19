@@ -1,0 +1,4 @@
+# Fixture authoring and cross-check oracles only. Never imported by src/;
+# the runtime needs nothing beyond requirements.txt and the standard library.
+py7zr>=0.20    # writes the 7z fixtures, and checks our reader against it
+lz4>=4.0       # writes the LZ4 fixtures, and checks our decoder against it
