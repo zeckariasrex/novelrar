@@ -367,11 +367,13 @@ def phrase_encode(seq: bytes, phrases: list[bytes]) -> bytes:
     return bytes(out)
 
 
-def phrase_decode(blob: bytes, phrases: list[bytes]) -> bytes:
+def phrase_decode(blob: bytes, phrases: list[bytes], max_output: int = 64 << 20) -> bytes:
     out = bytearray()
     i = 0
     n = len(blob)
     while i < n:
+        if len(out) > max_output:
+            raise ValueError("phrase output limit")
         op = blob[i]
         i += 1
         if op == 0xFF:
@@ -393,6 +395,8 @@ def phrase_decode(blob: bytes, phrases: list[bytes]) -> bytes:
             out.extend(phrases[pid])
         else:
             out.append(op)
+    if len(out)>max_output:
+        raise ValueError("phrase output limit")
     return bytes(out)
 
 
@@ -488,10 +492,14 @@ def encode_block(block: bytes, opt: EncodeOptions) -> bytes:
 
 
 def decode_block(buf: bytes, i: int = 0) -> tuple[bytes, int]:
+    if i >= len(buf): raise ValueError("truncated block")
     flags = buf[i]
+    if flags & ~15: raise ValueError("unknown block flags")
     i += 1
     nbytes, i = read_uvarint(buf, i)
     side, i = read_uvarint(buf, i)
+    if not 1 <= side <= 128 or nbytes > side**3 or i+2>len(buf):
+        raise ValueError("invalid cube dimensions/header")
     curve_a = buf[i]
     curve_b = buf[i + 1]
     i += 2
@@ -517,18 +525,14 @@ def decode_block(buf: bytes, i: int = 0) -> tuple[bytes, int]:
         clen, i = read_uvarint(buf, i)
         coded = buf[i : i + clen]
         i += clen
-        seq = phrase_decode(coded, phrases)
+        seq = phrase_decode(coded, phrases, side**3)
     else:
         slen, i = read_uvarint(buf, i)
         seq = buf[i : i + slen]
         i += slen
 
-    if len(seq) != side * side * side:
-        # tolerate over/under by padding
-        if len(seq) < side * side * side:
-            seq = seq + bytes(side * side * side - len(seq))
-        else:
-            seq = seq[: side * side * side]
+    if len(seq) != side**3:
+        raise ValueError("decoded cube length mismatch")
 
     resid = [[[0] * side for _ in range(side)] for _ in range(side)]
     for k, (x, y, z) in enumerate(order):
@@ -543,6 +547,8 @@ def decode_block(buf: bytes, i: int = 0) -> tuple[bytes, int]:
 # ---------------------------------------------------------------------------
 
 def compress(data: bytes, opt: EncodeOptions | None = None, block_size: int = 4096) -> bytes:
+    if not 1 <= block_size <= 1 << 20:
+        raise ValueError("block_size must be in [1, 1 MiB]")
     opt = opt or EncodeOptions()
     out = bytearray()
     out.extend(MAGIC)
@@ -561,7 +567,7 @@ def compress(data: bytes, opt: EncodeOptions | None = None, block_size: int = 40
 
 
 def decompress(blob: bytes) -> bytes:
-    if blob[:4] != MAGIC:
+    if len(blob)<5 or blob[:4] != MAGIC:
         raise ValueError("not an AV01 bitstream")
     if blob[4] != VERSION:
         raise ValueError(f"unsupported version {blob[4]}")
@@ -569,15 +575,24 @@ def decompress(blob: bytes) -> bytes:
     total, i = read_uvarint(blob, i)
     _bs, i = read_uvarint(blob, i)
     nblocks, i = read_uvarint(blob, i)
+    if total > 64 << 20 or nblocks > total or (total == 0 and nblocks):
+        raise ValueError("invalid total size/block count")
     parts = []
+    produced = 0
     for _ in range(nblocks):
         ln, i = read_uvarint(blob, i)
+        if ln > len(blob)-i: raise ValueError("truncated block body")
         block = blob[i : i + ln]
         i += ln
-        raw, _ = decode_block(block, 0)
+        raw, consumed = decode_block(block, 0)
+        if consumed != ln: raise ValueError("trailing block data")
+        produced += len(raw)
+        if produced>total: raise ValueError("output exceeds declared size")
         parts.append(raw)
     out = b"".join(parts)
-    return out[:total]
+    if len(out)!=total or i!=len(blob):
+        raise ValueError("total length/trailing data mismatch")
+    return out
 
 
 # ---------------------------------------------------------------------------

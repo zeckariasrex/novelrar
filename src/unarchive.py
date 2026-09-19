@@ -111,7 +111,7 @@ def _zip_central(blob: bytes) -> list:
     return out
 
 
-def read_zip(blob: bytes) -> Archive:
+def read_zip(blob: bytes, password: Optional[bytes] = None, max_output: int = 64 << 20) -> Archive:
     arch = Archive(container="zip")
     index = _zip_central(blob)
     arch.notes.append(f"central directory: {len(index)} entries")
@@ -120,6 +120,9 @@ def read_zip(blob: bytes) -> Archive:
         infos = zf.infolist()
     except Exception as e:
         arch.notes.append(f"zipfile refused the container: {e}")
+        return arch
+    if sum(info.file_size for info in infos) > max_output:
+        arch.notes.append("ZIP exceeds aggregate output limit")
         return arch
     by_name = {e["name"]: e for e in index}
     for info in infos:
@@ -131,7 +134,7 @@ def read_zip(blob: bytes) -> Archive:
         enc_strong = bool(flags & 0x40) or method == 99
         m = Member(name=info.filename, container="zip", codec=codec,
                    size=info.file_size, is_dir=info.is_dir())
-        if enc_strong or enc_weak:
+        if enc_strong or (enc_weak and password is None):
             codec = "aes" if enc_strong else "zipcrypto"
             m.codec = codec
             m.error = ("encrypted (WinZip AES)" if enc_strong else
@@ -144,7 +147,10 @@ def read_zip(blob: bytes) -> Archive:
                                      verified="directory", ok=True)
         else:
             try:
-                raw = zf.read(info)
+                with zf.open(info, pwd=password) as stream:
+                    raw = stream.read(min(info.file_size,max_output)+1)
+                if len(raw) != info.file_size:
+                    raise ValueError("ZIP output size mismatch")
             except Exception as e:
                 m.error = f"{type(e).__name__}: {e}"
                 m.receipt = make_receipt(info.filename, "zip", codec,
@@ -152,12 +158,14 @@ def read_zip(blob: bytes) -> Archive:
             else:
                 m.payload = raw
                 verified = "—"
-                if info.CRC:
+                if info.CRC is not None:
                     good = (zlib.crc32(raw) & 0xFFFFFFFF) == info.CRC
                     verified = "CRC-32 ok" if good else "CRC-32 BAD"
                     if not good:
                         m.error = "CRC-32 mismatch"
                 m.size = len(raw)
+                if enc_weak:
+                    codec = "zipcrypto-password"
                 m.receipt = make_receipt(info.filename, "zip", codec,
                                          n_bytes=len(raw), verified=verified,
                                          ok=m.error is None,
@@ -280,7 +288,7 @@ def read_rar(blob: bytes, policy: Optional[Policy] = None) -> Archive:
             m.receipt = make_receipt(
                 r.name, "rar", "store", chain="store",
                 n_bytes=len(r.payload or b""),
-                verified="CRC-32 ok" if (r.crc32 and r.payload is not None and not r.error)
+                verified="CRC-32 ok" if (r.crc32 is not None and r.payload is not None and not r.error)
                          else ("directory" if r.is_dir else "—"),
                 ok=r.payload is not None and not r.error, detail=r.error or "")
         else:
@@ -288,13 +296,13 @@ def read_rar(blob: bytes, policy: Optional[Policy] = None) -> Archive:
             payload, tool, detail = LB.host_extract("rar", blob, r.name, policy)
             if payload is not None:
                 ok = True
-                if r.crc32 and (zlib.crc32(payload) & 0xFFFFFFFF) != r.crc32:
+                if r.crc32 is not None and (zlib.crc32(payload) & 0xFFFFFFFF) != r.crc32:
                     ok, detail = False, "CRC-32 mismatch from host tool"
                 m.payload = payload if ok else None
                 m.error = None if ok else detail
                 m.receipt = make_receipt(
                     r.name, "rar", "compressed", chain=f"rar-{r.method_name}",
-                    n_bytes=len(payload), verified="CRC-32 ok" if ok else "CRC-32 BAD",
+                    n_bytes=len(payload), verified=("CRC-32 ok" if r.crc32 is not None else "not checked") if ok else "CRC-32 BAD",
                     ok=ok, detail=detail, tool=tool)
             else:
                 m.error = r.error or detail
@@ -311,11 +319,24 @@ def read_rar(blob: bytes, policy: Optional[Policy] = None) -> Archive:
 # ---------------------------------------------------------------------------
 
 def open_archive(blob: bytes, name: str = "input",
-                 policy: Optional[Policy] = None) -> Archive:
+                 policy: Optional[Policy] = None, password: Optional[bytes] = None, backend: str = "builtin") -> Archive:
     kind = sniff(blob)
     if kind == "zip":
-        return read_zip(blob)
+        return read_zip(blob, password)
     if kind == "7z":
+        if backend == "py7zr":
+            pol = policy or Policy()
+            if not pol.permits(LB.OPTIONAL):
+                raise ValueError("policy forbids optional backend")
+            from optional_sevenzip import read
+            entries=read(blob,password.decode('utf-8') if password is not None else None)
+            arch=Archive(container='7z')
+            for name,data in entries.items():
+                receipt=make_receipt(name,'7z','py7zr',n_bytes=len(data),
+                                     verified='backend checks + size',ok=True)
+                arch.members.append(Member(name,'7z','py7zr',len(data),data,receipt=receipt))
+                arch.receipts.append(receipt)
+            return arch
         return read_7z(blob)
     if kind == "lz4":
         return read_lz4(blob, name)

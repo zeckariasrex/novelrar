@@ -1,22 +1,17 @@
-novelrar does not include UnRAR, 7-Zip, or LZ4 source.
+Original novelrar code is MIT. No UnRAR, 7-Zip, or LZ4 implementation source is
+vendored in this repository. Public-format specifications inform original
+container parsers, codec experiments, and the RAR5 stored-file writer.
 
-Decode paths are tagged by provenance lane (see docs/LICENSING.md and
-src/license_broker.py):
+Implementation lanes (docs/LICENSING.md): STDLIB, CLEANROOM, HOST, OPTIONAL,
+and REFUSED. These labels record provenance and project policy, not a legal
+certification or a determination that unsupported operations are unlawful.
 
-  STDLIB     CPython zlib / bz2 / lzma. liblzma's LZMA and branch-filter core
-             descends from Igor Pavlov's public-domain LZMA SDK.
-  CLEANROOM  Written in this tree from published specifications:
-               - PKWARE APPNOTE.TXT (ZIP container)
-               - RFC 1951 (the in-tree DEFLATE tracer)
-               - 7-Zip DOC/7zFormat.txt (public domain, 7z container)
-               - lz4/lz4 doc/lz4_Block_format.md, lz4_Frame_format.md,
-                 xxHash_spec.md (BSD-2-Clause / CC0)
-               - RAR4 technote.txt and the RAR5 format notes (metadata only)
-  HOST       Binaries the operator installed. Not shipped, not linked.
-  REFUSED    Encrypted payloads, and RAR's compressed LZ/PPM stage.
+Optional runtime packages include py7zr (LGPL-2.1-or-later, plus dependency
+terms) and cryptography (Apache-2.0 OR BSD-3-Clause, plus dependency terms).
+python-lz4 and an installed libarchive are independent test oracles.
 
-RAR compression is not implemented, not translated, and not reverse
-engineered. No password is derived, tried, or accepted anywhere in this tree.
+Supplied-password ZIP/7z operations and the distinct NRX1 authenticated
+password envelope are supported. RAR password decryption and RAR compressed
+encoding/decoding are not implemented in-tree. No password search is included.
 
-py7zr and python-lz4 appear only in requirements-dev.txt, where they author
-test fixtures and act as oracles. They are never imported by src/.
+See docs/RESEARCH_REPORT.md for tested scope, limitations, and sources.

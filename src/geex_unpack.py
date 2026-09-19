@@ -79,6 +79,8 @@ def _codes_lsb(lengths):
     next_code = [0] * (maxl + 1)
     for bits in range(1, maxl + 1):
         code = (code + bl_count[bits - 1]) << 1
+        if code + bl_count[bits] > 1 << bits:
+            raise ValueError("oversubscribed Huffman tree")
         next_code[bits] = code
     tables = [None] + [{} for _ in range(maxl)]
     for sym, l in enumerate(lengths):
@@ -137,6 +139,8 @@ def _inflate_dynamic(br: BitReader):
             lengths.extend([0] * (3 + br.bits(3)))
         else:
             lengths.extend([0] * (11 + br.bits(7)))
+    if len(lengths)!=total or not lengths[256]:
+        raise ValueError("invalid dynamic code lengths/end marker")
     return lengths[:nlit], lengths[nlit:]
 
 
@@ -147,8 +151,10 @@ class MatchEvent:
     length: int
 
 
-def inflate_trace(data: bytes) -> Tuple[bytes, List[MatchEvent], dict]:
+def inflate_trace(data: bytes, max_output: int = 64 << 20, match_mode: str = "periodic") -> Tuple[bytes, List[MatchEvent], dict]:
     """RFC 1951 inflate with match diary. Returns (out, matches, stats)."""
+    if max_output<0 or match_mode not in ("scalar","periodic"):
+        raise ValueError("invalid inflater options")
     br = BitReader(data)
     out = bytearray()
     matches: List[MatchEvent] = []
@@ -170,6 +176,7 @@ def inflate_trace(data: bytes) -> Tuple[bytes, List[MatchEvent], dict]:
             if len(chunk) < ln:
                 raise EOFError("stored short")
             br.i += ln
+            if len(out)+ln>max_output: raise ValueError("inflate output limit")
             out.extend(chunk)
             n_stored += ln
             continue
@@ -183,20 +190,28 @@ def inflate_trace(data: bytes) -> Tuple[bytes, List[MatchEvent], dict]:
         while True:
             s = _read_sym(br, lit_t, lit_m)
             if s < 256:
+                if len(out)>=max_output: raise ValueError("inflate output limit")
                 out.append(s)
                 n_lit += 1
             elif s == 256:
                 break
             else:
+                if s>285: raise ValueError("reserved length symbol")
                 idx = s - 257
                 length = LEN_BASE[idx] + (br.bits(LEN_EXTRA[idx]) if LEN_EXTRA[idx] else 0)
                 dsym = _read_sym(br, dist_t, dist_m)
+                if dsym>29: raise ValueError("reserved distance symbol")
                 dist = DIST_BASE[dsym] + (br.bits(DIST_EXTRA[dsym]) if DIST_EXTRA[dsym] else 0)
                 if dist <= 0 or dist > len(out):
                     raise ValueError(f"bad distance {dist} at {len(out)}")
                 matches.append(MatchEvent(len(out), dist, length))
-                for _ in range(length):
-                    out.append(out[-dist])
+                if len(out)+length>max_output: raise ValueError("inflate output limit")
+                if match_mode == "scalar":
+                    for _ in range(length): out.append(out[-dist])
+                else:
+                    seed=bytes(out[-dist:])
+                    count, tail=divmod(length,dist)
+                    out.extend(seed*count+seed[:tail])
                 n_match += 1
     stats = dict(n_lit=n_lit, n_match=n_match, n_stored=n_stored,
                  n_out=len(out), n_in=br.i)

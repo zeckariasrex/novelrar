@@ -1,45 +1,53 @@
-# Boundary
+# Implementation boundaries
 
-novelrar is a licence-brokered unarchiver plus a geometric eval / extract /
-pack prototype. It is not a drop-in archiver and it is not a password tool.
+The project now explicitly permits original assembly/C/Python codec experiments
+and ordinary supplied-password operations. The previous blanket no-password
+rule was a project choice, not a conclusion that decryption is inherently
+unlawful. No password search functionality is included.
 
-Each bullet below names the lane it runs in; `docs/LICENSING.md` explains the
-lanes and `src/license_broker.py` is the machine-readable registry.
+## Original research
 
-## Allowed
+- LZ4 block encoding and framing from public format documentation.
+- Scalar, growing-copy, SSE2 and `rep movsb` match reconstruction.
+- RFC1951 parsing into an intermediate representation and native execution.
+- Adaptive compression with full-size candidate comparison and raw fallback.
+- RAR5 stored-container writing, without a RAR compression implementation.
 
-- Parse public container headers — ZIP APPNOTE, 7z `7zFormat.txt`, RAR4/RAR5
-  block types. (`CLEANROOM`)
-- Decode ZIP methods 0, 8, 12, 14 with CPython `zipfile` / `zlib` / `bz2` /
-  `lzma`, and verify CRC-32. (`STDLIB`)
-- Decode 7z folders whose coders are Copy, LZMA1, LZMA2, Deflate, BZip2,
-  Delta, or a BCJ branch filter. (`STDLIB` / `CLEANROOM`)
-- Decode LZ4 frames end to end and verify the XXH32 checksums. (`CLEANROOM`)
-- Extract RAR stored members (method 0x30 / 0) and list RAR metadata.
-  (`CLEANROOM`)
-- Hand a compressed RAR member to an `unrar` the **operator** installed, and
-  record which binary and version served the bytes. (`HOST`)
-- Run GEEX and windmill paint on **decoded** bytes.
+These are testable implementation experiments. They do not establish patent
+noninfringement or scientific novelty. Reusing a format does not automatically
+mean copying an implementation; writing assembly does not automatically prove
+independence or novelty either.
 
-## Refused
+## Passwords and encryption
 
-- ZIP general-purpose bit 0 (ZipCrypto) or bit 6 / method 99 (WinZip AES).
-- 7z coder `06F10701` (AES-256), including AES-encrypted headers.
-- RAR4 `LHD_PASSWORD` / `MHD_PASSWORD`, RAR5 extra record type 1 and header
-  type 4 (`HEAD_CRYPT`).
-- Reimplementing RAR's LZ/PPM compression stage from licensed sources, or
-  reverse engineering it.
-- Password search, KDF grinding, or treating ciphertext foam as a key.
-- 7z BCJ2, PPMd and Zstd. All three are legal to implement; none has a
-  stdlib path here and nothing in this tree can *write* a BCJ2 archive, so
-  an implementation could not be tested. Refused in-tree, routed to `HOST`.
-- Any codec absent from the capability registry — unregistered resolves to
-  `REFUSED`, so the default is "no", not "try it".
+- ZIP ZipCrypto: a supplied password is handled by Python's zipfile. Legacy
+  confidentiality only; no new ZipCrypto writer is added.
+- 7z: explicit optional py7zr backend supports its encryption capabilities.
+- NRX1: a separate authenticated envelope using cryptography, not a compatible
+  implementation of RAR/ZIP/7z encryption. Fixed scrypt parameters; AES-GCM
+  authenticates the header and compressed payload before decompression.
+- RAR passwords and ZIP AES remain unsupported.
 
-## Handoff
+## Operational limits
 
-If a real `unrar`, `7z`, `unar` or `lz4` binary is present on the host, the
-HOST lane calls it for unencrypted proprietary payloads and stamps the
-receipt with its version. Do not paste those programs into this tree.
-`--strict` removes the HOST lane entirely and the audit gate fails any run
-that used it.
+Default new stream/envelope output limit is 64 MiB (configurable up to 256 MiB).
+Built-in ZIP/7z/LZ4 archive paths have 64 MiB aggregate limits; built-in 7z also
+limits individual dictionary sizes. Native LZ4 output is explicitly bounded.
+These are not universal process CPU/memory guarantees for every legacy parser.
+
+Filesystem extraction creates files exclusively under no-follow directory
+handles on POSIX. Existing destinations, symlinks and hardlinks are not
+silently overwritten. Unsupported platforms fail closed. Caller-chosen root
+ancestors are outside this mechanism's scope.
+
+The existing HOST subprocess path still trusts installed extractors. It checks
+exit status, selectors, exact member paths and returned symlinks, but it is not
+a process sandbox and limits are not enforced during backend disk writes.
+Use isolation before processing hostile archives with that path. The optional
+py7zr backend writes through bounded memory sinks; its parser, dictionary and
+KDF allocation behavior remain the backend's responsibility.
+
+`--strict` excludes HOST and OPTIONAL extraction. The audit checks provenance
+of successful receipts; PASS does not imply every archive member was extracted
+or verified. Archive creation and new standalone stream APIs do not emit
+legacy archive receipts. Full streaming archive extraction is future work.

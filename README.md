@@ -1,119 +1,93 @@
 # novelrar
 
-A licence-brokered unarchiver, plus a geometric eval/extract codec and a
-**windmill dual** of IMO 2025 Problem 6.
+Archive extraction and independent codec research: LZ4 encoding/decoding,
+DEFLATE command execution, geometric predictors, password handling, and
+machine-level copy experiments. Original code is MIT. Independent development
+and documented provenance are goals; no patent clearance or algorithmic
+novelty is claimed.
 
-This is **not** UnRAR, 7-Zip, or LZ4. It vendors no decompressor source.
-What it does instead is make the licence status of every extracted byte a
-checkable property of a run — see **[docs/LICENSING.md](docs/LICENSING.md)**,
-which is the centre of the project.
+See [the implementation and measured-results report](docs/RESEARCH_REPORT.md),
+[format boundaries](docs/BOUNDARY.md), and [dependency provenance](docs/LICENSING.md).
 
-Repo: [github.com/zeckariasrex/novelrar](https://github.com/zeckariasrex/novelrar)
+## Implemented capabilities
 
-## Can it actually unzip / decompress rar, 7z, zip, lz4?
-
-Measured, byte-for-byte, by `tests/capability_probe.py`:
-
-| format | status | how |
-|---|---|---|
-| **ZIP** | **yes** — store, DEFLATE, bzip2, LZMA, streamed (data descriptor) | CPython `zipfile`/`zlib`/`bz2`/`lzma`, plus an independent RFC 1951 inflater that is cross-checked against zlib on every run |
-| **LZ4** | **yes** — modern, legacy and skippable frames; linked and independent blocks; stored blocks; all three checksums | clean-room decoder from the public LZ4 specs, incl. XXH32 |
-| **7z** | **yes** — copy, LZMA1, LZMA2, BZip2, Deflate, Delta, BCJ branch filters, encoded headers, solid archives. BCJ2/PPMd/Zstd refuse cleanly. | clean-room container parser over public-domain codecs already in CPython |
-| **RAR** | **partly, by design** — full metadata, and stored members extract exactly. Compressed members are handed to an operator-installed `unrar`, or refused. | RAR's compressed stage is the one genuine licence obstacle; it is not implemented, translated, or reverse engineered |
-| encrypted, any format | **refused** | ZipCrypto, WinZip AES, 7z AES-256, RAR4/RAR5 AES. No password is derived, tried, or accepted. |
-
-```
-ZIP    6 fixtures  11/11 streams bit-exact  1 correctly refused
-7z    10 fixtures  21/21 streams bit-exact  3 correctly refused
-RAR    7 fixtures   6/6  streams bit-exact  5 correctly refused
-LZ4   11 fixtures  11/11 streams bit-exact  0 correctly refused
-```
-
-Full table: [results/capability_matrix.md](results/capability_matrix.md).
-
-Before this pass, ZIP worked, RAR5 store worked, **RAR4 was broken outright**
-(`0x8000` is `LONG_BLOCK`, present on every file header — it was read as
-header encryption, so the walk aborted on the first file of every archive),
-and 7z and LZ4 were magic-number sniffing with no decode path at all.
-
-## The licence argument, in one paragraph
-
-Three of the four formats never had a licence problem. ZIP is a public
-specification over RFC 1951. The LZ4 block/frame/xxHash specs are published
-under a BSD-2-Clause/CC0-equivalent grant that invites independent
-implementation. The LZMA SDK — and `7zFormat.txt` with it — is **public
-domain**, and liblzma already ships inside CPython, so a non-encrypted 7z
-archive needs no licensed code; only a container parser was missing. The real
-obstacle is one stage of one format: RAR's compressed LZ/PPM payload. So the
-answer is not to reimplement anything, it is to **name the lane every byte
-came out of and let a policy fail the build**.
-
-| lane | meaning |
+| Format / operation | Implementation |
 |---|---|
-| `STDLIB` | permissive library already inside CPython |
-| `CLEANROOM` | written here from a cited public specification |
-| `HOST` | delegated to a binary the operator installed; never shipped |
-| `REFUSED` | no lawful path — encryption, and RAR's compressed stage |
+| ZIP read/write | Store, DEFLATE, bzip2, LZMA through Python; supplied-password ZipCrypto reading |
+| Raw DEFLATE | zlib production path; independent Python tracer; experimental command parser + native LZ executor |
+| zlib / gzip | In-memory and incremental file-like stream APIs |
+| bzip2 / XZ | Bounded in-memory decoding and standard-library encoding |
+| LZ4 | Independent block encoder and frame writer; Python decoder; optional original C/SSE2/assembly block kernels |
+| 7z | Built-in selected codec chains; explicit optional py7zr read/write, including AES and encrypted headers |
+| RAR4 / RAR5 | Metadata and stored extraction; independent RAR5 method-0 writer; existing external compressed extraction |
+| NA01 | Experimental adaptive raw / zlib / bzip2 / XZ / row-XOR prediction selection, measured by full encoded size |
+| NRX1 | Experimental authenticated password envelope: fixed-cost scrypt + AES-256-GCM through cryptography |
+| AV01 / NR01 / GEEX | Existing geometric research, with stricter AV01 length checks |
 
-## Run
+**RAR compressed decoding, RAR password decryption, and RAR compression are not
+implemented in-tree.** NRX1 is a distinct format, not RAR/ZIP/7z encryption.
+WinZip AES is still unsupported. The built-in 7z reader still rejects AES,
+BCJ2, PPMd and Zstd; explicit `py7zr` selection supports that backend's subset.
+
+## Install and build
 
 ```bash
-python3 -m pip install -r requirements.txt
-
-PYTHONPATH=src python3 src/novelrar_cli.py capabilities
-PYTHONPATH=src python3 src/novelrar_cli.py list    tests/fixtures/7z_bcj_lzma2.7z
-PYTHONPATH=src python3 src/novelrar_cli.py extract ARCHIVE -d out
-PYTHONPATH=src python3 src/novelrar_cli.py audit   ARCHIVE... --strict   # exits 2 on violation
-
-PYTHONPATH=src python3 -m unittest discover -s tests -v
-PYTHONPATH=src python3 tests/capability_probe.py
+python -m pip install -r requirements.txt
+# Optional encryption and 7z adapters:
+python -m pip install -r requirements-crypto.txt -r requirements-backends.txt
+# Explicit native build, currently Linux (x86-64 enables SSE2 and assembly):
+python scripts/build_native.py
 ```
 
-Regenerating fixtures needs the dev oracles (`pip install -r
-requirements-dev.txt`); running the tests does not — fixtures are committed.
+Native code is never compiled automatically on import. Python decoding remains
+available without a compiler. Assembly uses System V AMD64 `rep movsb`; SSE2
+uses bounded unaligned vector loads/stores. ARM uses C scalar/growing-copy modes.
 
-## Layout
+## CLI examples
 
-| path | job |
-|---|---|
-| `src/license_broker.py` | lanes, capability registry, receipts, audit gate, HOST handoff |
-| `src/unarchive.py` | one entry point over every container, receipt per member |
-| `src/lz4_frame.py` | clean-room LZ4 frame + block + XXH32 |
-| `src/sevenzip.py` | clean-room 7z container parser, coder graph over stdlib codecs |
-| `src/rar_reader.py` | RAR4/RAR5 headers; stored members only, by design |
-| `src/geex_unpack.py` | RFC 1951 match-cloud tracer, GEEX scoring on decoded bytes |
-| `src/geex_eval_extract.py` | GEEX: voxelize, classify, object + XOR residual |
-| `src/geex_windmill_v1.py` | windmill dual of IMO 2025 P6 |
-| `src/avccnmp_codec.py` | AV01 experimental codec + dispatch |
-| `tests/` | fixtures, test suite, capability probe |
+Commands refuse to overwrite existing output files. Passwords are prompted,
+not placed in command arguments or receipts.
 
-## GEEX and the windmill (unchanged by this pass)
-
-A block of bytes is packed into a cube; cortex columns measure shadow, shape
-and surface; a router emits a typed geometric object. Reconstruction is
-bit-exact:
-
-```
-original = object XOR residual
+```bash
+PYTHONPATH=src python src/novelrar_cli.py capabilities
+PYTHONPATH=src python src/novelrar_cli.py extract archive.zip -d out --password
+PYTHONPATH=src python src/novelrar_cli.py extract archive.7z -d out --backend py7zr --password
+PYTHONPATH=src python src/novelrar_cli.py create-zip file.txt -o archive.zip
+PYTHONPATH=src python src/novelrar_cli.py create-7z file.txt -o archive.7z --password
+PYTHONPATH=src python src/novelrar_cli.py create-rar-store file.txt -o stored.rar
+PYTHONPATH=src python src/novelrar_cli.py compress file.txt -o file.lz4 --codec lz4
+PYTHONPATH=src python src/novelrar_cli.py decompress file.lz4 -o decoded.txt --codec lz4 --backend grow
+PYTHONPATH=src python src/novelrar_cli.py decompress stream.deflate -o decoded.bin --codec deflate --backend asm
+PYTHONPATH=src python src/novelrar_cli.py encrypt file.txt -o private.nrx
+PYTHONPATH=src python src/novelrar_cli.py decrypt private.nrx -o restored.txt
+PYTHONPATH=src python src/novelrar_cli.py --strict audit archive.zip
 ```
 
-IMO 2025 P6 minimises rectangles on an `n×n` board with one gap per row and
-column. For `n = k²` the minimum is `T = k² + 2k − 3` (`n = 2025 = 45²` →
-**2112**). This repo uses the opposite objective: store the permutation and
-one fill per tile, paint, keep an XOR residual.
+`list` currently decodes members as well as listing them; it is not a cheap
+metadata-only operation. CLI operations are in-memory. The separate
+`research_codec.transform_stream(source, sink, codec, decode=...)` API handles
+incremental raw-DEFLATE/zlib/gzip streams. Its sink is provisional until success.
 
-| k | n | tiles | theory | cells / tile |
-|--:|--:|------:|-------:|-------------:|
-| 4 | 16 | 21 | 21 | 11.43 |
-| 8 | 64 | 77 | 77 | 52.36 |
+## Verification
 
-## Boundary
+```bash
+python -m pip install -r requirements-dev.txt -r requirements-crypto.txt -r requirements-backends.txt
+python scripts/build_native.py
+PYTHONPATH=src python -m unittest discover -s tests -v
+PYTHONPATH=src python tests/capability_probe.py
+PYTHONPATH=src python scripts/benchmark_research.py
+cc -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer native/lz4_decode.c native/repeat_x86_64.S native/sanitize_test.c -o build/sanitize_test
+./build/sanitize_test
+```
 
-- Encrypted anything: read the flag, stop. No password handling exists.
-- Do not vendor `unrar`, 7-Zip, or LZ4 source.
-- Geometry is not a key.
+The tests include oracle interoperability and negative cases. Optional tests
+skip when their backend/native build is absent. Benchmark numbers include FFI,
+allocation and equality-check overhead; see the report before interpreting them.
 
-## License
+## Existing geometric research
 
-Original code in this repository is MIT (see `LICENSE`). That does not grant
-rights to RAR, 7-Zip, or LZ4 implementations. See `NOTICE`.
+- [GEEX](docs/GEEX.md): geometric evaluation and residual prediction.
+- [Windmill](docs/WINDMILL.md), [motifs](docs/MOTIF.md), and `src/geex_nr01.py`:
+  reconstruct an original board from a model and XOR residual.
+- Historical tables under `results/` are experiments, not general compression
+  claims. NA01 provides a separate conservative size-selection experiment.

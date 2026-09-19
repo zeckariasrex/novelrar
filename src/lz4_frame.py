@@ -93,13 +93,15 @@ def xxh32(data: bytes, seed: int = 0) -> int:
 # Block format (lz4_Block_format.md)
 # ---------------------------------------------------------------------------
 
-def decompress_block(src: bytes, max_out: int = 0, prefix: bytes = b"") -> bytes:
+def decompress_block(src: bytes, max_out: Optional[int] = None, prefix: bytes = b"") -> bytes:
     """Decode one LZ4 block.
 
     ``prefix`` is the already-decoded history a linked block may match into.
     Returns only the bytes produced by *this* block.
     """
-    out = bytearray(prefix)
+    if max_out is not None and max_out < 0:
+        raise LZ4Error("negative output allowance")
+    out = bytearray(prefix[-65536:])
     base = len(out)
     n = len(src)
     i = 0
@@ -118,6 +120,8 @@ def decompress_block(src: bytes, max_out: int = 0, prefix: bytes = b"") -> bytes
                     break
         if i + lit > n:
             raise LZ4Error(f"literal run overruns block ({lit} at {i}/{n})")
+        if max_out is not None and len(out)-base+lit > max_out:
+            raise LZ4Error("literal exceeds output limit")
         out += src[i:i + lit]
         i += lit
         if i == n:
@@ -141,13 +145,16 @@ def decompress_block(src: bytes, max_out: int = 0, prefix: bytes = b"") -> bytes
                 if b != 255:
                     break
         mlen += 4  # minmatch
+        if max_out is not None and len(out)-base+mlen > max_out:
+            raise LZ4Error("match exceeds output limit")
         start = len(out) - offset
         if offset >= mlen:
             out += out[start:start + mlen]
-        else:  # overlapping run — must copy byte by byte
-            for k in range(mlen):
-                out.append(out[start + k])
-        if max_out and len(out) - base > max_out:
+        else:  # periodic seed expansion preserves forward-copy semantics
+            seed = bytes(out[start:])
+            repeats, tail = divmod(mlen, offset)
+            out += seed * repeats + seed[:tail]
+        if max_out is not None and len(out) - base > max_out:
             raise LZ4Error("block expands past declared maximum")
     return bytes(out[base:])
 
@@ -209,22 +216,28 @@ def _parse_descriptor(buf: bytes, i: int) -> tuple[FrameInfo, int]:
     return info, i
 
 
-def decompress_frame(buf: bytes, i: int = 0, dictionary: bytes = b"") -> tuple[bytes, FrameInfo, int]:
+def decompress_frame(buf: bytes, i: int = 0, dictionary: bytes = b"", max_output: int = 64 << 20, backend: str = "python") -> tuple[bytes, FrameInfo, int]:
     """Decode one frame starting at ``i``. Returns (data, info, next_offset)."""
+    if max_output < 0:
+        raise LZ4Error("negative output allowance")
     if i + 4 > len(buf):
         raise LZ4Error("truncated magic")
     (magic,) = struct.unpack_from("<I", buf, i)
     if MAGIC_SKIP_LO <= magic <= MAGIC_SKIP_HI:
+        if i + 8 > len(buf):
+            raise LZ4Error("truncated skippable size")
         (size,) = struct.unpack_from("<I", buf, i + 4)
         end = i + 8 + size
         if end > len(buf):
             raise LZ4Error("truncated skippable frame")
         return b"", FrameInfo(kind="skippable", header_bytes=8), end
     if magic == MAGIC_LEGACY:
-        return _decompress_legacy(buf, i + 4)
+        return _decompress_legacy(buf, i + 4, max_output)
     if magic != MAGIC:
         raise LZ4Error(f"not an LZ4 frame magic: {magic:#010x}")
     info, i = _parse_descriptor(buf, i + 4)
+    if info.content_size is not None and info.content_size > max_output:
+        raise LZ4Error("content size exceeds output limit")
     if info.dict_id is not None and not dictionary:
         raise LZ4Error(f"frame needs dictionary {info.dict_id:#x}; none supplied")
 
@@ -251,12 +264,24 @@ def decompress_frame(buf: bytes, i: int = 0, dictionary: bytes = b"") -> tuple[b
             got = xxh32(body)
             if got != want:
                 raise LZ4Error(f"block xxh32 {got:#010x} != {want:#010x}")
+        allowance = min(info.block_max, max_output-len(out))
+        if bsize > info.block_max:
+            raise LZ4Error("block exceeds descriptor maximum")
         if stored:
+            if len(body) > allowance:
+                raise LZ4Error("stored block exceeds output limit")
             chunk = body
             info.n_stored += 1
         else:
-            prefix = b"" if info.block_independent else bytes(history)
-            chunk = decompress_block(body, info.block_max, prefix)
+            prefix = dictionary[-65536:] if info.block_independent else bytes(history)
+            if backend == "python":
+                chunk = decompress_block(body, allowance, prefix)
+            else:
+                from native_lz4 import decompress_block as native_decode
+                try:
+                    chunk = native_decode(body, allowance, prefix, backend)
+                except ValueError as exc:
+                    raise LZ4Error(str(exc)) from exc
         out += chunk
         info.n_blocks += 1
         if not info.block_independent:
@@ -281,7 +306,7 @@ def decompress_frame(buf: bytes, i: int = 0, dictionary: bytes = b"") -> tuple[b
     return bytes(out), info, i
 
 
-def _decompress_legacy(buf: bytes, i: int) -> tuple[bytes, FrameInfo, int]:
+def _decompress_legacy(buf: bytes, i: int, max_output: int = 64 << 20) -> tuple[bytes, FrameInfo, int]:
     """Legacy frame: magic then bare 4-byte-size-prefixed blocks, no EndMark."""
     info = FrameInfo(kind="legacy", block_independent=True,
                      block_max=LEGACY_BLOCK_MAX, header_bytes=4)
@@ -294,18 +319,18 @@ def _decompress_legacy(buf: bytes, i: int) -> tuple[bytes, FrameInfo, int]:
             break
         if bsize == 0 or bsize > LEGACY_BLOCK_MAX or i + 4 + bsize > n:
             break
-        out += decompress_block(buf[i + 4:i + 4 + bsize], LEGACY_BLOCK_MAX)
+        out += decompress_block(buf[i + 4:i + 4 + bsize], min(LEGACY_BLOCK_MAX,max_output-len(out)))
         i += 4 + bsize
         info.n_blocks += 1
     return bytes(out), info, i
 
 
-def decompress(buf: bytes, dictionary: bytes = b"") -> bytes:
+def decompress(buf: bytes, dictionary: bytes = b"", max_output: int = 64 << 20, backend: str = "python") -> bytes:
     """Decode every concatenated frame in ``buf``. Skippable frames drop out."""
     out = bytearray()
     i = 0
     while i < len(buf):
-        data, _info, i2 = decompress_frame(buf, i, dictionary)
+        data, _info, i2 = decompress_frame(buf, i, dictionary, max_output-len(out), backend)
         if i2 <= i:
             raise LZ4Error("no forward progress")
         out += data
@@ -313,13 +338,13 @@ def decompress(buf: bytes, dictionary: bytes = b"") -> bytes:
     return bytes(out)
 
 
-def inspect(buf: bytes, dictionary: bytes = b"") -> dict:
+def inspect(buf: bytes, dictionary: bytes = b"", max_output: int = 64 << 20) -> dict:
     """Decode and report every frame, for the capability probe."""
     frames, i = [], 0
     total = bytearray()
     while i < len(buf):
         try:
-            data, info, i2 = decompress_frame(buf, i, dictionary)
+            data, info, i2 = decompress_frame(buf, i, dictionary, max_output-len(total))
         except LZ4Error as e:
             frames.append({"error": str(e), "at": i})
             break

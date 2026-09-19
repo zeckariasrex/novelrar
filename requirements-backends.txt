@@ -1,0 +1,2 @@
+# Optional in-memory 7z creation/decryption; explicit backend selection.
+py7zr>=1.1.0,<2
