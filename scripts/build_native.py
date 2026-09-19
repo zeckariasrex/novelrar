@@ -9,7 +9,7 @@ if platform.system() != 'Linux':
     raise SystemExit('This build recipe currently supports Linux only.')
 output = ROOT / 'build' / 'libnovelrar.so'
 output.parent.mkdir(exist_ok=True)
-sources = [str(ROOT / 'native/lz4_decode.c')]
+sources = [str(ROOT / 'native/lz4_decode.c'), str(ROOT / 'native/deflate.c')]
 if platform.machine() in ('x86_64', 'AMD64'):
     sources.append(str(ROOT / 'native/repeat_x86_64.S'))
 subprocess.run([os.environ.get('CC', 'cc'), '-O3', '-std=c11', '-Wall', '-Wextra',
