@@ -65,12 +65,10 @@ def host_command(tool_name: str, tool_path: str, archive: str, dest: str,
     raise ValueError(f'no command template for {tool_name}')
 
 
-def _walk_files(root: Path) -> dict[str, bytes]:
+def _walk_files(root: Path) -> dict:
     out = {}
     for path in root.rglob('*'):
-        if path.is_symlink():
-            continue
-        if not path.is_file():
+        if path.is_symlink() or not path.is_file():
             continue
         rel = path.relative_to(root).as_posix()
         if path.stat().st_size > 64 << 20:
@@ -79,7 +77,7 @@ def _walk_files(root: Path) -> dict[str, bytes]:
     return out
 
 
-def _run(cmd: list[str], desc: str):
+def _run(cmd: list, desc: str):
     try:
         from host_isolate import run as isolated_run
         proc = isolated_run(cmd, timeout=120)
@@ -106,7 +104,9 @@ def extract(container: str, blob: bytes, member: str,
     tool = LB.find_host_tool(LB.HOST_TOOLS.get(container, ()), policy)
     if tool is None:
         looked = ', '.join(LB.HOST_TOOLS.get(container, ()))
-        return None, '', f'no operator-installed extractor for {container} on PATH (looked for: {looked})'
+        return None, '', (
+            f'no operator-installed extractor for {container} on PATH '
+            f'(looked for: {looked})')
     suffix = {'rar': '.rar', '7z': '.7z', 'lz4': '.lz4', 'zip': '.zip'}.get(container, '.bin')
     desc = f'{tool.name} {tool.version}'.strip()
     with tempfile.TemporaryDirectory() as td:
@@ -147,7 +147,9 @@ def extract_all(container: str, blob: bytes,
     tool = LB.find_host_tool(LB.HOST_TOOLS.get(container, ()), policy)
     if tool is None:
         looked = ', '.join(LB.HOST_TOOLS.get(container, ()))
-        return None, '', f'no operator-installed extractor for {container} on PATH (looked for: {looked})'
+        return None, '', (
+            f'no operator-installed extractor for {container} on PATH '
+            f'(looked for: {looked})')
     suffix = {'rar': '.rar', '7z': '.7z', 'lz4': '.lz4', 'zip': '.zip'}.get(container, '.bin')
     desc = f'{tool.name} {tool.version}'.strip()
     with tempfile.TemporaryDirectory() as td:
@@ -169,3 +171,30 @@ def extract_all(container: str, blob: bytes,
         if not files:
             return None, desc, 'host produced no files'
         return files, desc, 'rc=0'
+
+
+def _register():
+    extra = (
+        LB._cap('zip', 'aes-host', LB.HOST, "operator's unzip/7z",
+                'WinZip AES via installed extractor; supplied password only'),
+        LB._cap('7z', 'aes-host', LB.HOST, "operator's 7z",
+                '7z AES via installed extractor; supplied password only'),
+        LB._cap('7z', 'aes256-supplied', LB.OPTIONAL, 'LGPL-2.1-or-later (py7zr)',
+                'py7zr supplied-password AES; not original codec research'),
+        LB._cap('rar', 'encrypted-host', LB.HOST, "operator's unrar/7z",
+                'RAR encrypted member via installed extractor; supplied password only'),
+        LB._cap('rar', 'header-encrypted-host', LB.HOST, "operator's unrar/7z",
+                'RAR encrypted headers via installed extractor; supplied password only'),
+    )
+    for cap in extra:
+        LB.CAPABILITIES[cap.key] = cap
+
+    def _extract(container, blob, member, policy=None, password=None):
+        return extract(container, blob, member, policy, password)
+
+    LB.host_extract = _extract
+    LB.host_extract_all = extract_all
+    LB.host_command = host_command
+
+
+_register()
