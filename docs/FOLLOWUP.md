@@ -5,9 +5,18 @@ The four STATUS items after the squash are on `main`.
 1. Native RFC1951 parse: `native/deflate.c`, `deflate_ir.decompress(..., parse='native')`.
 2. Scale benches: `scripts/benchmark_scale.py`, `results/lz4_scale_benchmark.json`.
 3. RAR bitstream plan only: `docs/RAR_BITSTREAM.md`. No codec.
-4. HOST isolation helper: `src/host_isolate.py`. `host_extract` should call
-   `host_isolate.run`; if a tree still uses bare `subprocess.run` there, use
-   the helper. Isolation is not a sandbox.
+4. HOST isolation helper: `src/host_isolate.py`. Production handoff is
+   `src/host_handoff.py`, which calls `host_isolate.run`. Isolation is not a
+   sandbox.
+
+Product extraction path (no in-tree RAR codec, no password search):
+
+- No password: encrypted ZIP/7z/RAR stay REFUSED (capability probe default).
+- Password + ZipCrypto: STDLIB (`zipfile`).
+- Password + WinZip AES: HOST.
+- Password + 7z AES: OPTIONAL py7zr, else HOST.
+- Password + RAR encrypted or header-encrypted: HOST.
+- Compressed RAR: HOST always; password is forwarded when supplied.
 
 Measured raw-DEFLATE text, tight `max_output=len(data)`, MiB/s including FFI:
 
@@ -17,4 +26,4 @@ Measured raw-DEFLATE text, tight `max_output=len(data)`, MiB/s including FFI:
 | 1 MiB | 105.7 | 755.6 | 979.8 |
 
 Native parse beats Python IR setup cost and is still behind zlib. Opt-in only.
-Compressed RAR remains out of scope.
+Compressed RAR remains out of tree.

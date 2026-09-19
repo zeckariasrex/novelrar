@@ -1,9 +1,9 @@
 # Implementation boundaries
 
-The project now explicitly permits original assembly/C/Python codec experiments
-and ordinary supplied-password operations. The previous blanket no-password
-rule was a project choice, not a conclusion that decryption is inherently
-unlawful. No password search functionality is included.
+The project permits original assembly/C/Python codec experiments and ordinary
+supplied-password operations. The previous blanket no-password rule was a
+project choice, not a conclusion that decryption is inherently unlawful.
+No password search functionality is included.
 
 ## Original research
 
@@ -22,11 +22,17 @@ independence or novelty either.
 
 - ZIP ZipCrypto: a supplied password is handled by Python's zipfile. Legacy
   confidentiality only; no new ZipCrypto writer is added.
-- 7z: explicit optional py7zr backend supports its encryption capabilities.
+- ZIP WinZip AES: no in-tree codec. A supplied password is forwarded to HOST.
+- 7z AES: optional py7zr (OPTIONAL) or HOST. Built-in reader still refuses AES.
+- RAR encrypted members and encrypted headers: no in-tree password decoder.
+  A supplied password is forwarded to HOST (`unrar`/`7z`/`unar`).
+- Compressed RAR: HOST only. See `docs/RAR_BITSTREAM.md` before any codec
+  attempt. Public header fields are not that plan.
 - NRX1: a separate authenticated envelope using cryptography, not a compatible
   implementation of RAR/ZIP/7z encryption. Fixed scrypt parameters; AES-GCM
   authenticates the header and compressed payload before decompression.
-- RAR passwords and ZIP AES remain unsupported.
+- Without a password the default probe still refuses encrypted members.
+- `--strict` excludes HOST and OPTIONAL.
 
 ## Operational limits
 
@@ -48,10 +54,7 @@ before the receipt check. The optional py7zr backend writes through bounded
 memory sinks; its parser, dictionary and KDF allocation behavior remain the
 backend's responsibility.
 
-Compressed RAR remains HOST. See `docs/RAR_BITSTREAM.md` before any codec
-attempt. Public header fields are not that plan.
-
-`--strict` excludes HOST and OPTIONAL extraction. The audit checks provenance
-of successful receipts; PASS does not imply every archive member was extracted
-or verified. Archive creation and new standalone stream APIs do not emit
-legacy archive receipts. Full streaming archive extraction is future work.
+The audit checks provenance of successful receipts; PASS does not imply every
+archive member was extracted or verified. Archive creation and new standalone
+stream APIs do not emit legacy archive receipts. Full streaming archive
+extraction is future work.
