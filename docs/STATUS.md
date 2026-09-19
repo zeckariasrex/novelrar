@@ -1,17 +1,18 @@
 # Main-line status
 
-Date: 2026-09-19. `main` is `8b146137` (squash of PR #9) plus this
-housekeeping commit.
+Date: 2026-09-19.
 
 ## What main is
 
-The landed research increment: independent LZ4 encode/decode, optional
-native match kernels, DEFLATE IR (opt-in), NA01, stored RAR5 write,
-supplied-password ZIP/optional-7z, NRX1 envelope, POSIX no-follow
-extraction, and the measured report in `docs/RESEARCH_REPORT.md`.
+The landed research increment (PR #9) plus the four follow-up items that
+STATUS listed after the squash:
 
-Geometric work (GEEX, windmill, NR01, AV01) remains in tree. It is not
-replaced by NA01.
+1. Native DEFLATE *parsing* (`native/deflate.c`, `parse='native'`).
+2. 64 KiB and 1 MiB scale benches with rusage; perf-stat when present.
+3. Independent RAR bitstream *plan* only (`docs/RAR_BITSTREAM.md`).
+4. Isolated HOST execution (`src/host_isolate.py`).
+
+Geometric work (GEEX, windmill, NR01, AV01) remains in tree.
 
 ## Review decisions
 
@@ -19,10 +20,11 @@ replaced by NA01.
 |---|---|
 | PR #9 `research/native-codecs` | Squash-merged to `main`. |
 | PR #8 `codex/harden-extraction-paths` | Closed. Lexical `Path.resolve` is weaker than `safe_output.write_member`. |
-| Topic branches from PRs #3–#7 | Already in `main`. Delete when the GitHub UI or a ref-delete token is available. |
+| Post-#9 items 1–4 | Landed on `main` in this increment. |
+| Topic branches from PRs #3–#7 / #9 | Already in `main`. Delete when a ref-delete token is available. |
 
-GitHub's review API rejects self-APPROVE on this account. The squash
-merge is the acceptance record.
+GitHub's review API rejects self-APPROVE on this account. The merge to
+`main` is the acceptance record.
 
 ## Still out of scope
 
@@ -30,13 +32,15 @@ merge is the acceptance record.
 - WinZip AES.
 - Treating NRX1 as compatible RAR/ZIP/7z encryption.
 - Claiming the microbenchmarks are universal speedups.
+- Treating `unshare` + rlimits as a hardened sandbox.
 
 ## Next research, in order
 
-1. Native DEFLATE *parsing* (not just match replay) if the Python IR
-   setup cost remains the measured bottleneck.
-2. Real LZ4 corpora and hardware counters, not only 64 KiB hot-cache
-   samples.
-3. A written independent RAR *bitstream* research plan before any codec
-   attempt. Public container fields are not that plan.
-4. Isolated HOST execution; the current subprocess path is not a sandbox.
+The previous four items are done. Remaining work is not a blocker for this
+line:
+
+1. Streaming archive outputs and solid-group scheduling.
+2. Independently implemented RAR4 Unicode name decoding.
+3. Broader LZ4 corpora than the synthetic 1 MiB set, on bare metal with
+   working perf counters.
+4. Execute the RAR bitstream plan only if BOUNDARY is explicitly revised.
