@@ -1,0 +1,3 @@
+novelrar does not include UnRAR, 7-Zip, or LZ4 source.
+ZIP inflate uses Python's stdlib zlib/zipfile (RFC 1951).
+RAR/7z support is header identification only.
