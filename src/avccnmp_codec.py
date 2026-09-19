@@ -587,8 +587,6 @@ def decompress(blob: bytes) -> bytes:
 def sniff(blob: bytes) -> str:
     if blob[:4] == MAGIC:
         return "avccnmp"
-    if blob[:4] == b"TLZ4":
-        return "toy_lz4"
     if blob[:2] in (b"\x78\x01", b"\x78\x5e", b"\x78\x9c", b"\x78\xda"):
         return "zlib"
     if blob[:2] == b"\x1f\x8b":
@@ -611,31 +609,38 @@ def sniff(blob: bytes) -> str:
 
 
 def dispatch_decompress(blob: bytes) -> tuple[str, bytes | None, str]:
-    """Return (kind, payload or None, note). Never attacks encryption."""
+    """Return (kind, payload or None, note). Never attacks encryption.
+
+    Container formats are routed through :mod:`unarchive`, so the note carries
+    the licence lane the bytes came out of. Bare compressed streams go to the
+    stdlib. LZ4 now decodes in-tree; 7z now decodes in-tree over stdlib
+    codecs; RAR still only yields stored members plus metadata.
+    """
     kind = sniff(blob)
     try:
         if kind == "avccnmp":
             return kind, decompress(blob), "AV01 self-decoder"
         if kind == "zlib":
-            return kind, zlib.decompress(blob), "stdlib zlib"
+            return kind, zlib.decompress(blob), "STDLIB: zlib (RFC 1950/1951)"
         if kind == "gzip":
-            return kind, gzip.decompress(blob), "stdlib gzip"
+            return kind, gzip.decompress(blob), "STDLIB: gzip"
         if kind == "xz":
-            return kind, lzma.decompress(blob), "stdlib lzma (XZ/LZMA2 family used by 7z payloads)"
+            return kind, lzma.decompress(blob), "STDLIB: lzma (the XZ/LZMA2 family 7z payloads use)"
         if kind == "bz2":
-            return kind, bz2.decompress(blob), "stdlib bz2"
-        if kind == "toy_lz4":
-            from avccnmp_experiments import toy_lz4_decompress
-
-            return kind, toy_lz4_decompress(blob), "toy LZ4-style token decoder"
-        if kind == "7z":
-            return kind, None, "7z container recognized. Unencrypted LZMA/LZMA2 payloads are the XZ family; full 7z listing needs a 7z tool. Encrypted 7z is AES-256 — supply the password to a native tool."
-        if kind in ("rar4", "rar5"):
-            return kind, None, "RAR container recognized. Sandbox has no unrar. Encrypted RAR is AES — supply the password to a native tool."
-        if kind == "lz4_frame":
-            return kind, None, "LZ4 frame magic recognized. No liblz4 in this environment; AV01 can wrap the decompressed payload once a native LZ4 decode is available."
-        if kind == "zip":
-            return kind, None, "ZIP container recognized. Use zipfile for unencrypted members."
+            return kind, bz2.decompress(blob), "STDLIB: bz2"
+        if kind in ("lz4_frame", "zip", "7z", "rar4", "rar5"):
+            import unarchive
+            arch = unarchive.open_archive(blob, "stream")
+            got = [m for m in arch.members if m.payload is not None]
+            lanes = sorted({r.lane for r in arch.receipts})
+            note = (f"{arch.container}: {len(got)}/{len(arch.members)} members "
+                    f"decoded via lane(s) {', '.join(lanes) or 'none'}")
+            if not got:
+                blocked = [m.error for m in arch.members if m.error]
+                return kind, None, note + (f" — {blocked[0]}" if blocked else "")
+            if len(got) == 1:
+                return kind, got[0].payload, note
+            return kind, b"".join(m.payload for m in got), note + " (concatenated)"
         return kind, None, "unrecognized stream"
     except Exception as e:
         return kind, None, f"decode error: {type(e).__name__}: {e}"

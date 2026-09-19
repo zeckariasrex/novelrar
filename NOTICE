@@ -1,3 +1,22 @@
 novelrar does not include UnRAR, 7-Zip, or LZ4 source.
-ZIP inflate uses Python's stdlib zlib/zipfile (RFC 1951).
-RAR/7z support is header identification only.
+
+Decode paths are tagged by provenance lane (see docs/LICENSING.md and
+src/license_broker.py):
+
+  STDLIB     CPython zlib / bz2 / lzma. liblzma's LZMA and branch-filter core
+             descends from Igor Pavlov's public-domain LZMA SDK.
+  CLEANROOM  Written in this tree from published specifications:
+               - PKWARE APPNOTE.TXT (ZIP container)
+               - RFC 1951 (the in-tree DEFLATE tracer)
+               - 7-Zip DOC/7zFormat.txt (public domain, 7z container)
+               - lz4/lz4 doc/lz4_Block_format.md, lz4_Frame_format.md,
+                 xxHash_spec.md (BSD-2-Clause / CC0)
+               - RAR4 technote.txt and the RAR5 format notes (metadata only)
+  HOST       Binaries the operator installed. Not shipped, not linked.
+  REFUSED    Encrypted payloads, and RAR's compressed LZ/PPM stage.
+
+RAR compression is not implemented, not translated, and not reverse
+engineered. No password is derived, tried, or accepted anywhere in this tree.
+
+py7zr and python-lz4 appear only in requirements-dev.txt, where they author
+test fixtures and act as oracles. They are never imported by src/.
