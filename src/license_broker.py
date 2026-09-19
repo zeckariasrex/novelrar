@@ -1,41 +1,8 @@
 #!/usr/bin/env python3
-"""Codec provenance broker — the licence boundary as data, not as a README.
+"""Codec provenance registry and extraction receipts.
 
-The brief was a *novel* way to handle the licensing of proprietary
-decompressors, explicitly not a faster or better decompressor. This module is
-that answer, and the answer is a reframing: the problem is not that the
-algorithms are hard, it is that nobody can cheaply prove which licence each
-extracted byte came out under. So make the boundary machine-readable.
-
-Every decode path in this tree is tagged with a **lane**:
-
-  STDLIB     A permissive library already inside CPython. zlib (zlib licence),
-             bz2 (BSD), lzma -> liblzma, whose LZMA and branch-filter core
-             descends from Igor Pavlov's public-domain LZMA SDK. Nothing is
-             vendored; the obligation is already discharged by CPython.
-  CLEANROOM  Written in this tree from a published specification that permits
-             independent implementation. Each entry cites the document.
-  HOST       Delegated to a binary the *operator* installed. We never ship it,
-             never link it, never copy from it. The licence obligation sits
-             with the operator's own install, and the receipt records exactly
-             which binary and version served the bytes.
-  REFUSED    No lawful path exists. Encrypted payloads, and RAR's compressed
-             LZ/PPM stage, land here and stay here.
-
-Two things fall out of that, and they are the actual deliverable:
-
- 1. **A receipt per extracted stream.** Format, coder chain, lane, licence,
-    the citable basis, and how the bytes were verified (CRC-32, xxHash-32).
- 2. **An audit gate.** ``audit()`` fails a run whose bytes came out of a lane
-    the deployment did not authorise. A shop that cannot accept a HOST
-    dependency sets ``Policy.strict()`` and the build breaks loudly at the
-    point of extraction, instead of quietly at legal review.
-
-The novelty claim is deliberately modest and is architectural, not
-algorithmic: this decompresses nothing faster than the native tools, and is
-not trying to. It makes the licence status of a decompression pipeline a
-checkable property of a run.
-"""
+Lanes describe implementation/dependency choices, not legal conclusions.
+See docs/LICENSING.md and docs/BOUNDARY.md for current policy and limitations."""
 from __future__ import annotations
 
 import shutil
@@ -49,8 +16,9 @@ STDLIB = "STDLIB"
 CLEANROOM = "CLEANROOM"
 HOST = "HOST"
 REFUSED = "REFUSED"
+OPTIONAL = "OPTIONAL"
 
-LANE_ORDER = (STDLIB, CLEANROOM, HOST, REFUSED)
+LANE_ORDER = (STDLIB, CLEANROOM, HOST, OPTIONAL, REFUSED)
 
 
 @dataclass(frozen=True)
@@ -76,6 +44,8 @@ def _cap(*a, **kw) -> Capability:
 # ---------------------------------------------------------------------------
 
 CAPABILITIES: dict[tuple, Capability] = {c.key: c for c in (
+    _cap("zip", "zipcrypto-password", STDLIB, "PSF",
+         "CPython zipfile supplied-password decryption; legacy confidentiality only"),
     # --- ZIP -----------------------------------------------------------
     _cap("zip", "store", CLEANROOM, "n/a (byte copy)",
          "PKWARE APPNOTE.TXT 4.4.5 method 0"),
@@ -96,6 +66,8 @@ CAPABILITIES: dict[tuple, Capability] = {c.key: c for c in (
          "WinZip AE-1/AE-2, general-purpose bit 6",
          "encrypted; no password is derived, tried, or accepted"),
 
+    _cap("7z", "py7zr", OPTIONAL, "LGPL-2.1-or-later; dependency licenses also apply",
+         "Explicit installed py7zr backend; not original codec research"),
     # --- 7z ------------------------------------------------------------
     _cap("7z", "container", CLEANROOM, "public domain",
          "7-Zip DOC/7zFormat.txt",
@@ -145,11 +117,8 @@ CAPABILITIES: dict[tuple, Capability] = {c.key: c for c in (
     _cap("rar", "store", CLEANROOM, "n/a (byte copy)",
          "RAR4 method 0x30 / RAR5 method 0"),
     _cap("rar", "compressed", HOST, "operator's own unrar install",
-         "unrar licence: sources may be used to read RAR archives, but not "
-         "to recreate the RAR compression algorithm, and not to reverse "
-         "engineer it",
-         "THE licence obstacle in this tree. Not vendored, not translated, "
-         "not guessed. Delegated or refused."),
+         "Separately installed extractor; consult that distribution's terms",
+         "Not implemented in-tree. Delegated to a separately installed extractor."),
     _cap("rar", "encrypted", REFUSED, "n/a", "RAR4 LHD_PASSWORD / RAR5 extra type 1",
          "encrypted; no password is derived, tried, or accepted"),
     _cap("rar", "header-encrypted", REFUSED, "n/a",
@@ -173,7 +142,7 @@ def capability(container: str, codec: str) -> Capability:
 @dataclass
 class Policy:
     """Which lanes this deployment is willing to accept bytes from."""
-    allow: frozenset = frozenset({STDLIB, CLEANROOM, HOST})
+    allow: frozenset = frozenset({STDLIB, CLEANROOM, HOST, OPTIONAL})
     host_binaries: tuple = ("7z", "7za", "7zr", "unrar", "unar", "lz4",
                         "bsdtar", "unzip")
     name: str = "default"
@@ -336,6 +305,13 @@ def host_extract(container: str, blob: bytes, member: str,
     policy = policy or Policy()
     if not policy.permits(HOST):
         return None, "", f"policy '{policy.name}' forbids the HOST lane"
+    from safe_output import member_parts
+    try:
+        parts = member_parts(member)
+    except ValueError as exc:
+        return None, "", str(exc)
+    if any(c in member for c in "*?[]") or any(p.startswith("-") for p in parts):
+        return None, "", "ambiguous host member selector"
     tool = find_host_tool(HOST_TOOLS.get(container, ()), policy)
     if tool is None:
         return None, "", (f"no operator-installed extractor for {container} on PATH "
@@ -365,13 +341,24 @@ def host_extract(container: str, blob: bytes, member: str,
             proc = subprocess.run(cmd, capture_output=True, timeout=120)
         except (OSError, subprocess.SubprocessError) as e:
             return None, desc, f"{type(e).__name__}: {e}"
-        hits = [p for p in dest.rglob("*") if p.is_file()]
-        exact = [p for p in hits if p.name == Path(member).name]
-        pick = (exact or hits or [None])[0]
-        if pick is None:
-            err = (proc.stderr or proc.stdout).decode("utf-8", "replace").strip()
-            return None, desc, f"rc={proc.returncode} {err[:120]}"
-        return pick.read_bytes(), desc, f"rc={proc.returncode}"
+        if proc.returncode != 0:
+            return None, desc, f"extractor failed: rc={proc.returncode}"
+        from safe_output import member_parts
+        try:
+            parts = member_parts(member)
+        except ValueError as exc:
+            return None, desc, str(exc)
+        pick = dest.joinpath(*parts)
+        current = dest
+        for part in parts:
+            current = current / part
+            if current.is_symlink():
+                return None, desc, "extractor returned symlink"
+        if not pick.is_file():
+            return None, desc, "exact requested member not produced"
+        if pick.stat().st_size > 64 << 20:
+            return None, desc, "host output exceeds 64 MiB limit"
+        return pick.read_bytes(), desc, "rc=0"
 
 
 # ---------------------------------------------------------------------------

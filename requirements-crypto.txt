@@ -1,0 +1,2 @@
+# Optional NRX1 authenticated envelopes; not needed for archive reading.
+cryptography>=43

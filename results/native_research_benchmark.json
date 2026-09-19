@@ -1,0 +1,444 @@
+{
+  "environment": {
+    "platform": "Linux-6.18.44-x86_64-with-glibc2.39",
+    "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+    "compiler": "cc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0"
+  },
+  "methodology": "5 samples, median; 20 decodes each (DEFLATE tracer: 2); includes FFI, allocations and equality checks",
+  "lz4": {
+    "repeat1": {
+      "python-periodic": {
+        "seconds": 2.662065e-05,
+        "MiB_per_second": 2347.8014248337286
+      },
+      "liblz4-oracle": {
+        "seconds": 7.236899999999999e-06,
+        "MiB_per_second": 8636.29454600727
+      },
+      "scalar": {
+        "seconds": 0.00013173820000000002,
+        "MiB_per_second": 474.4257929742473
+      },
+      "grow": {
+        "seconds": 8.18335e-06,
+        "MiB_per_second": 7637.45898684524
+      },
+      "sse2": {
+        "seconds": 8.405700000000002e-06,
+        "MiB_per_second": 7435.430719630725
+      },
+      "asm": {
+        "seconds": 0.000188283,
+        "MiB_per_second": 331.9471221512298
+      }
+    },
+    "period3": {
+      "python-periodic": {
+        "seconds": 1.892005e-05,
+        "MiB_per_second": 3303.3739340012316
+      },
+      "liblz4-oracle": {
+        "seconds": 4.721975e-05,
+        "MiB_per_second": 1323.5987060499049
+      },
+      "scalar": {
+        "seconds": 4.3868699999999996e-05,
+        "MiB_per_second": 1424.7059976703208
+      },
+      "grow": {
+        "seconds": 6.4346999999999996e-06,
+        "MiB_per_second": 9712.96253127574
+      },
+      "sse2": {
+        "seconds": 6.5899499999999995e-06,
+        "MiB_per_second": 9484.13872639398
+      },
+      "asm": {
+        "seconds": 6.162844999999999e-05,
+        "MiB_per_second": 1014.1420074657079
+      }
+    },
+    "text": {
+      "python-periodic": {
+        "seconds": 2.0258049999999998e-05,
+        "MiB_per_second": 3085.1932935302266
+      },
+      "liblz4-oracle": {
+        "seconds": 1.499815e-05,
+        "MiB_per_second": 4167.180618943003
+      },
+      "scalar": {
+        "seconds": 1.8955099999999997e-05,
+        "MiB_per_second": 3297.26564354712
+      },
+      "grow": {
+        "seconds": 6.4477e-06,
+        "MiB_per_second": 9693.379034384354
+      },
+      "sse2": {
+        "seconds": 1.81714e-05,
+        "MiB_per_second": 3439.4708167780136
+      },
+      "asm": {
+        "seconds": 1.9231e-05,
+        "MiB_per_second": 3249.9610004679944
+      }
+    },
+    "ramp": {
+      "python-periodic": {
+        "seconds": 2.206225e-05,
+        "MiB_per_second": 2832.8932905755305
+      },
+      "liblz4-oracle": {
+        "seconds": 4.3375500000000005e-06,
+        "MiB_per_second": 14409.055803391313
+      },
+      "scalar": {
+        "seconds": 6.72265e-06,
+        "MiB_per_second": 9296.929038400036
+      },
+      "grow": {
+        "seconds": 6.415649999999999e-06,
+        "MiB_per_second": 9741.803246748188
+      },
+      "sse2": {
+        "seconds": 6.8233e-06,
+        "MiB_per_second": 9159.790717101696
+      },
+      "asm": {
+        "seconds": 6.45925e-06,
+        "MiB_per_second": 9676.0459805705
+      }
+    },
+    "random": {
+      "python-periodic": {
+        "seconds": 1.877635e-05,
+        "MiB_per_second": 3328.6554628562
+      },
+      "liblz4-oracle": {
+        "seconds": 4.2373999999999994e-06,
+        "MiB_per_second": 14749.610610279891
+      },
+      "scalar": {
+        "seconds": 6.9645e-06,
+        "MiB_per_second": 8974.08284873286
+      },
+      "grow": {
+        "seconds": 6.96505e-06,
+        "MiB_per_second": 8973.374204061707
+      },
+      "sse2": {
+        "seconds": 7.12925e-06,
+        "MiB_per_second": 8766.700564575516
+      },
+      "asm": {
+        "seconds": 7.07265e-06,
+        "MiB_per_second": 8836.857472093205
+      }
+    }
+  },
+  "compression": {
+    "repeat1": {
+      "store": {
+        "bytes": 65536,
+        "ratio": 1.0,
+        "encode_seconds": 2.193e-06
+      },
+      "deflate": {
+        "bytes": 79,
+        "ratio": 0.0012054443359375,
+        "encode_seconds": 0.000224389
+      },
+      "zlib": {
+        "bytes": 85,
+        "ratio": 0.0012969970703125,
+        "encode_seconds": 0.000191539
+      },
+      "gzip": {
+        "bytes": 97,
+        "ratio": 0.0014801025390625,
+        "encode_seconds": 0.000256027
+      },
+      "bzip2": {
+        "bytes": 43,
+        "ratio": 0.0006561279296875,
+        "encode_seconds": 0.00055677
+      },
+      "xz": {
+        "bytes": 140,
+        "ratio": 0.00213623046875,
+        "encode_seconds": 0.007819917
+      },
+      "lz4": {
+        "bytes": 294,
+        "ratio": 0.004486083984375,
+        "encode_seconds": 0.012607317
+      },
+      "adaptive": {
+        "bytes": 88,
+        "ratio": 0.0013427734375,
+        "encode_seconds": 0.023396714
+      }
+    },
+    "period3": {
+      "store": {
+        "bytes": 65536,
+        "ratio": 1.0,
+        "encode_seconds": 1.112e-06
+      },
+      "deflate": {
+        "bytes": 81,
+        "ratio": 0.0012359619140625,
+        "encode_seconds": 0.000143426
+      },
+      "zlib": {
+        "bytes": 87,
+        "ratio": 0.0013275146484375,
+        "encode_seconds": 0.000144719
+      },
+      "gzip": {
+        "bytes": 99,
+        "ratio": 0.0015106201171875,
+        "encode_seconds": 0.000147733
+      },
+      "bzip2": {
+        "bytes": 48,
+        "ratio": 0.000732421875,
+        "encode_seconds": 0.00735172
+      },
+      "xz": {
+        "bytes": 144,
+        "ratio": 0.002197265625,
+        "encode_seconds": 0.002347712
+      },
+      "lz4": {
+        "bytes": 296,
+        "ratio": 0.0045166015625,
+        "encode_seconds": 0.012992118
+      },
+      "adaptive": {
+        "bytes": 93,
+        "ratio": 0.0014190673828125,
+        "encode_seconds": 0.026455318
+      }
+    },
+    "text": {
+      "store": {
+        "bytes": 65536,
+        "ratio": 1.0,
+        "encode_seconds": 1.301e-06
+      },
+      "deflate": {
+        "bytes": 249,
+        "ratio": 0.0037994384765625,
+        "encode_seconds": 0.000138078
+      },
+      "zlib": {
+        "bytes": 255,
+        "ratio": 0.0038909912109375,
+        "encode_seconds": 0.000147152
+      },
+      "gzip": {
+        "bytes": 267,
+        "ratio": 0.0040740966796875,
+        "encode_seconds": 0.000148374
+      },
+      "bzip2": {
+        "bytes": 161,
+        "ratio": 0.0024566650390625,
+        "encode_seconds": 0.007793306
+      },
+      "xz": {
+        "bytes": 180,
+        "ratio": 0.00274658203125,
+        "encode_seconds": 0.001529597
+      },
+      "lz4": {
+        "bytes": 337,
+        "ratio": 0.0051422119140625,
+        "encode_seconds": 0.011184131
+      },
+      "adaptive": {
+        "bytes": 206,
+        "ratio": 0.003143310546875,
+        "encode_seconds": 0.025991767
+      }
+    },
+    "ramp": {
+      "store": {
+        "bytes": 65536,
+        "ratio": 1.0,
+        "encode_seconds": 8.51e-07
+      },
+      "deflate": {
+        "bytes": 579,
+        "ratio": 0.0088348388671875,
+        "encode_seconds": 0.000156076
+      },
+      "zlib": {
+        "bytes": 585,
+        "ratio": 0.0089263916015625,
+        "encode_seconds": 0.000164689
+      },
+      "gzip": {
+        "bytes": 597,
+        "ratio": 0.0091094970703125,
+        "encode_seconds": 0.000163377
+      },
+      "bzip2": {
+        "bytes": 788,
+        "ratio": 0.01202392578125,
+        "encode_seconds": 0.006387735
+      },
+      "xz": {
+        "bytes": 372,
+        "ratio": 0.00567626953125,
+        "encode_seconds": 0.001562267
+      },
+      "lz4": {
+        "bytes": 549,
+        "ratio": 0.0083770751953125,
+        "encode_seconds": 0.011350792
+      },
+      "adaptive": {
+        "bytes": 320,
+        "ratio": 0.0048828125,
+        "encode_seconds": 0.024857397
+      }
+    },
+    "random": {
+      "store": {
+        "bytes": 65536,
+        "ratio": 1.0,
+        "encode_seconds": 1.713e-06
+      },
+      "deflate": {
+        "bytes": 65556,
+        "ratio": 1.00030517578125,
+        "encode_seconds": 0.001171437
+      },
+      "zlib": {
+        "bytes": 65562,
+        "ratio": 1.000396728515625,
+        "encode_seconds": 0.001168443
+      },
+      "gzip": {
+        "bytes": 65574,
+        "ratio": 1.000579833984375,
+        "encode_seconds": 0.001201483
+      },
+      "bzip2": {
+        "bytes": 66175,
+        "ratio": 1.0097503662109375,
+        "encode_seconds": 0.007587636
+      },
+      "xz": {
+        "bytes": 65600,
+        "ratio": 1.0009765625,
+        "encode_seconds": 0.036042229
+      },
+      "lz4": {
+        "bytes": 65563,
+        "ratio": 1.0004119873046875,
+        "encode_seconds": 0.018208777
+      },
+      "adaptive": {
+        "bytes": 65581,
+        "ratio": 1.0006866455078125,
+        "encode_seconds": 0.044045602
+      }
+    }
+  },
+  "deflate": {
+    "repeat1": {
+      "scalar": {
+        "seconds": 0.0021420865,
+        "MiB_per_second": 29.17715974588328
+      },
+      "periodic": {
+        "seconds": 0.000314334,
+        "MiB_per_second": 198.83308837096845
+      },
+      "native-ir-grow": {
+        "seconds": 0.000469809,
+        "MiB_per_second": 133.0327856639613
+      },
+      "zlib": {
+        "seconds": 0.0001203015,
+        "MiB_per_second": 519.5280191851307
+      }
+    },
+    "period3": {
+      "scalar": {
+        "seconds": 0.0020422205,
+        "MiB_per_second": 30.603943109962902
+      },
+      "periodic": {
+        "seconds": 0.00032149,
+        "MiB_per_second": 194.40729105104356
+      },
+      "native-ir-grow": {
+        "seconds": 0.00043416,
+        "MiB_per_second": 143.95614519992628
+      },
+      "zlib": {
+        "seconds": 4.55442e-05,
+        "MiB_per_second": 1372.293288717334
+      }
+    },
+    "text": {
+      "scalar": {
+        "seconds": 0.0026268025,
+        "MiB_per_second": 23.793185821926087
+      },
+      "periodic": {
+        "seconds": 0.000445327,
+        "MiB_per_second": 140.34630732023885
+      },
+      "native-ir-grow": {
+        "seconds": 0.0005321025,
+        "MiB_per_second": 117.4585723615281
+      },
+      "zlib": {
+        "seconds": 1.953245e-05,
+        "MiB_per_second": 3199.8034040788534
+      }
+    },
+    "ramp": {
+      "scalar": {
+        "seconds": 0.003298871,
+        "MiB_per_second": 18.945875725361798
+      },
+      "periodic": {
+        "seconds": 0.0009624865,
+        "MiB_per_second": 64.93597572537381
+      },
+      "native-ir-grow": {
+        "seconds": 0.0013472475,
+        "MiB_per_second": 46.39088215045862
+      },
+      "zlib": {
+        "seconds": 2.0808400000000002e-05,
+        "MiB_per_second": 3003.5947021395205
+      }
+    },
+    "random": {
+      "scalar": {
+        "seconds": 1.3761e-05,
+        "MiB_per_second": 4541.821088583679
+      },
+      "periodic": {
+        "seconds": 1.322e-05,
+        "MiB_per_second": 4727.685325264751
+      },
+      "native-ir-grow": {
+        "seconds": 2.15725e-05,
+        "MiB_per_second": 2897.207092362962
+      },
+      "zlib": {
+        "seconds": 6.44625e-06,
+        "MiB_per_second": 9695.559433779328
+      }
+    }
+  }
+}

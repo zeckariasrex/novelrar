@@ -8,4 +8,5 @@ __pycache__/
 # generated
 artifacts/
 out/
-tests/fixtures/_payloads.py
+
+build/

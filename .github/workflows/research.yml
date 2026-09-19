@@ -1,0 +1,17 @@
+name: Codec research verification
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt -r requirements-dev.txt -r requirements-crypto.txt -r requirements-backends.txt
+      - run: python scripts/build_native.py
+      - run: PYTHONPATH=src python -m unittest discover -s tests -v
+      - run: |
+          cc -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer native/lz4_decode.c native/repeat_x86_64.S native/sanitize_test.c -o build/sanitize_test
+          ./build/sanitize_test
+      - run: PYTHONPATH=src python tests/capability_probe.py

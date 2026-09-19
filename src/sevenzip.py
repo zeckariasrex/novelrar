@@ -334,22 +334,24 @@ def _lzma1(data: bytes, props: bytes, out_size: int) -> bytes:
     lc, rem = d % 9, d // 9
     lp, pb = rem % 5, rem // 5
     dict_size = struct.unpack("<I", props[1:5])[0]
+    if dict_size > 64 << 20: raise SevenZError("LZMA dictionary exceeds 64 MiB")
     flt = [{"id": lzma.FILTER_LZMA1, "dict_size": max(dict_size, 4096),
             "lc": lc, "lp": lp, "pb": pb}]
     dec = lzma.LZMADecompressor(format=lzma.FORMAT_RAW, filters=flt)
-    return dec.decompress(data, max_length=out_size)
+    return dec.decompress(data, max_length=out_size+1)
 
 
 def _lzma2(data: bytes, props: bytes, out_size: int) -> bytes:
     if not props:
         raise SevenZError("LZMA2 needs 1 property byte")
-    p = props[0] & 0x3F
+    p = props[0]
     if p > 40:
         raise SevenZError(f"bad LZMA2 dict size code {p}")
     dict_size = 0xFFFFFFFF if p == 40 else (2 | (p & 1)) << (p // 2 + 11)
+    if dict_size > 64 << 20: raise SevenZError("LZMA dictionary exceeds 64 MiB")
     flt = [{"id": lzma.FILTER_LZMA2, "dict_size": max(dict_size, 4096)}]
     dec = lzma.LZMADecompressor(format=lzma.FORMAT_RAW, filters=flt)
-    return dec.decompress(data, max_length=out_size)
+    return dec.decompress(data, max_length=out_size+1)
 
 
 def _branch_unfilter(data: bytes, filt: int, props: bytes) -> bytes:
@@ -411,9 +413,9 @@ def run_coder(coder: Coder, inputs: list, out_size: int) -> bytes:
     if m in BRANCH:
         return _branch_unfilter(inputs[0], BRANCH[m], coder.props)[:out_size]
     if m == DEFLATE:
-        return zlib.decompressobj(-15).decompress(inputs[0], out_size)
+        return zlib.decompressobj(-15).decompress(inputs[0], out_size+1)
     if m == BZIP2:
-        return bz2.BZ2Decompressor().decompress(inputs[0], out_size)
+        return bz2.BZ2Decompressor().decompress(inputs[0], out_size+1)
     if m == BCJ2:
         return _bcj2(inputs, out_size)
     if m == AES256:
@@ -423,6 +425,8 @@ def run_coder(coder: Coder, inputs: list, out_size: int) -> bytes:
 
 def decode_folder(folder: Folder, packed: list) -> bytes:
     """Resolve the coder graph and return the folder's main output stream."""
+    if any(size > 64 << 20 for size in folder.unpack_sizes):
+        raise SevenZError("folder exceeds 64 MiB output limit")
     if folder.encrypted():
         raise SevenZRefused("folder is AES-256 encrypted; refuse")
     # map global in/out stream indices to (coder, local index)
@@ -455,11 +459,16 @@ def decode_folder(folder: Folder, packed: list) -> bytes:
             else:
                 raise SevenZError(f"input stream {gi} is unbound")
         data = run_coder(coder, args, folder.unpack_sizes[gout])
+        if len(data) != folder.unpack_sizes[gout]:
+            raise SevenZError("coder output size mismatch")
         produced[gout] = data
         depth -= 1
         return data
 
-    return out_stream(folder.main_out())
+    raw = out_stream(folder.main_out())
+    if folder.crc is not None and zlib.crc32(raw) & 0xffffffff != folder.crc:
+        raise SevenZError("folder CRC mismatch")
+    return raw
 
 
 # ---------------------------------------------------------------------------
@@ -543,6 +552,8 @@ def _parse_header(r: Reader, blob: bytes, arch: SevenZArchive) -> None:
     if pid == kMainStreamsInfo:
         si = _read_streams_info(r)
         pid = r.number()
+    if sum(f.size for f in si.folders) > 64 << 20:
+        raise SevenZError("archive exceeds 64 MiB output limit")
     arch.folders = si.folders
     for f in si.folders:
         arch.notes.append(f"folder: {f.chain()} -> {f.size} bytes")
@@ -588,6 +599,7 @@ def _parse_header(r: Reader, blob: bytes, arch: SevenZArchive) -> None:
             e.crc = want
             if want is not None and (zlib.crc32(e.payload) & 0xFFFFFFFF) != want:
                 e.error = "CRC32 mismatch"
+                e.payload = None
             off += sz
             ei += 1
     arch.entries = entries
@@ -603,7 +615,7 @@ def read(blob: bytes) -> SevenZArchive:
     arch.version = (blob[6], blob[7])
     start_crc = struct.unpack_from("<I", blob, 8)[0]
     if (zlib.crc32(blob[12:32]) & 0xFFFFFFFF) != start_crc:
-        arch.notes.append("start-header CRC mismatch")
+        raise SevenZError("start-header CRC mismatch")
     nh_off, nh_size, nh_crc = struct.unpack_from("<QQI", blob, 12)
     if nh_size == 0:
         arch.notes.append("empty archive")
@@ -613,7 +625,7 @@ def read(blob: bytes) -> SevenZArchive:
     if len(hdr) != nh_size:
         raise SevenZError("next header runs past end of file")
     if (zlib.crc32(hdr) & 0xFFFFFFFF) != nh_crc:
-        arch.notes.append("next-header CRC mismatch")
+        raise SevenZError("next-header CRC mismatch")
 
     r = Reader(hdr)
     pid = r.number()

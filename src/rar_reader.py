@@ -1,32 +1,10 @@
 #!/usr/bin/env python3
-"""RAR container reader — metadata and stored members only, by design.
+"""RAR4/RAR5 container parser and stored-member decoder.
 
-Provenance
-----------
-RAR is the one format in this tree with a genuine licensing obstacle, and it
-is worth stating precisely, because it is narrower than "RAR is proprietary".
-
-  * The **container layout** (RAR4 ``technote.txt``, and the RAR5 format
-    notes published with the unrar distribution) is public documentation.
-    Parsing block headers from it is lane ``CLEANROOM``.
-  * Method 0x30 (RAR4) / method 0 (RAR5) is **store** — the payload is a
-    byte-for-byte copy. Copying bytes is not an algorithm anybody licenses.
-  * The **compressed** payload is the problem. The unrar source is published
-    under a licence that permits using the sources to *read* RAR archives but
-    forbids using them to recreate the RAR compression algorithm, and forbids
-    reverse engineering. So we do not vendor it, do not translate it, and do
-    not guess at it. Compressed members are lane ``HOST`` (hand off to a
-    binary the operator installed themselves) or lane ``REFUSED``.
-
-Encrypted members and encrypted headers are refused outright. No password is
-derived, tried, or accepted anywhere in this module.
-
-Fixes over the earlier walker: RAR4 0x8000 is LONG_BLOCK (present on every
-file header), not header encryption — the old code aborted on the first file
-of every archive; the RAR4 file-header struct had FTIME as 1 byte instead of
-4; RAR5 extra-area records were walked with an expression that could not
-advance; and the RAR5 method field is bits 7-9, not 8-10.
-"""
+Based on public container descriptions. Compressed data is delegated to an
+installed host extractor; RAR password processing is not implemented here.
+These are implementation boundaries, not claims that independent codec
+research is prohibited. See docs/RESEARCH_REPORT.md."""
 from __future__ import annotations
 
 import struct
@@ -133,6 +111,8 @@ def read_rar4(blob: bytes) -> RarArchive:
         if hsize < 7 or i + hsize > n:
             arch.notes.append(f"bad header size {hsize} at {i}; stop")
             break
+        if zlib.crc32(blob[i+2:i+hsize]) & 0xffff != _crc:
+            raise RarError("RAR4 header CRC mismatch")
         kind = R4_TYPE.get(htype, f"0x{htype:02x}")
         add_size = 0
         if flags & LONG_BLOCK and i + 11 <= n:
@@ -153,6 +133,8 @@ def read_rar4(blob: bytes) -> RarArchive:
             arch.notes.append("end-of-archive block")
             break
         if htype == R4_FILE:
+            if hsize < 32 or (flags & LHD_LARGE and hsize < 40):
+                raise RarError("truncated RAR4 file header")
             # PACK_SIZE is the ADD_SIZE slot; the rest follows at +11.
             pack = add_size
             (unp, host, fcrc, ftime, unpver, method, nsz, attr) = struct.unpack_from(
@@ -163,6 +145,8 @@ def read_rar4(blob: bytes) -> RarArchive:
                 pack |= hi_pack << 32
                 unp |= hi_unp << 32
                 off += 8
+            if off + nsz > i + hsize:
+                raise RarError("RAR4 filename exceeds header")
             name_raw = blob[off:off + nsz]
             m = RarMember(
                 version="rar4",
@@ -208,7 +192,7 @@ def _walk_extra(area: bytes) -> dict:
             size, p = _read_vint(area, off)
         except RarError:
             break
-        if size == 0 or p + size > len(area) + 1:
+        if size == 0 or p + size > len(area):
             break
         rec_end = p + size
         try:
@@ -241,6 +225,9 @@ def read_rar5(blob: bytes) -> RarArchive:
             arch.notes.append(f"bad header size {hsize} at {start}; stop")
             break
         hend = hstart + hsize
+        want_crc = struct.unpack_from("<I",blob,start)[0]
+        if zlib.crc32(blob[start+4:hend]) & 0xffffffff != want_crc:
+            raise RarError("RAR5 header CRC mismatch")
         try:
             htype, j = _read_vint(blob, hstart)
             hflags, j = _read_vint(blob, j)
@@ -263,6 +250,8 @@ def read_rar5(blob: bytes) -> RarArchive:
         if htype == R5_END:
             arch.notes.append("end-of-archive block")
             break
+        if extra_sz > hend-j or hend+data_sz > n:
+            raise RarError("RAR5 block bounds invalid")
         if htype in (R5_FILE, R5_SERVICE):
             extra = blob[hend - extra_sz:hend] if extra_sz else b""
             records = _walk_extra(extra)
@@ -279,6 +268,8 @@ def read_rar5(blob: bytes) -> RarArchive:
                 comp, k = _read_vint(blob, k)
                 _host, k = _read_vint(blob, k)
                 nlen, k = _read_vint(blob, k)
+                if k+nlen > hend-extra_sz:
+                    raise RarError("RAR5 filename exceeds header body")
                 name = blob[k:k + nlen].decode("utf-8", "replace")
             except (RarError, struct.error) as e:
                 arch.notes.append(f"{kind} header body: {e}")
@@ -299,6 +290,7 @@ def read_rar5(blob: bytes) -> RarArchive:
                 unp_size=0 if fflags & FF_UNKNOWN_SIZE else unp,
                 crc32=crc, data_off=hend,
                 extra={"comp_info": comp, "attr": attr,
+                       "split_before": bool(hflags & 8), "split_after": bool(hflags & 16),
                        "dict_shift": (comp >> 10) & 0x0F,
                        "rar_version": comp & 0x3F,
                        "extra_records": sorted(records)},
@@ -317,6 +309,9 @@ def _finish(m: RarMember, blob: bytes) -> None:
         m.error = ("encrypted member (AES); refuse — no password is derived, "
                    "tried, or accepted")
         return
+    if m.extra.get("split_before") or m.extra.get("split_after"):
+        m.error = "split member requires all volumes; not a complete file"
+        return
     if m.is_dir:
         m.payload = b""
         return
@@ -331,7 +326,7 @@ def _finish(m: RarMember, blob: bytes) -> None:
     if m.unp_size and len(data) != m.unp_size:
         m.error = f"store size mismatch {len(data)} != {m.unp_size}"
         return
-    if m.crc32 is not None and m.crc32 != 0:
+    if m.crc32 is not None:
         got = zlib.crc32(data) & 0xFFFFFFFF
         if got != m.crc32:
             m.error = f"CRC32 {got:08x} != {m.crc32:08x}"
