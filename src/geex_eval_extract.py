@@ -10,13 +10,13 @@ Not an LZMA / RAR / LZ4 / AES inverse.
 """
 from __future__ import annotations
 
-import json, math, hashlib
+import json, math, hashlib, os
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Optional
 import numpy as np
 
-ART = Path("/home/workdir/artifacts")
+ART = Path(os.environ.get("NOVELRAR_ARTIFACTS", "artifacts"))
 
 
 # ---------------------------------------------------------------------------
@@ -764,6 +764,7 @@ def run():
     acc = sum(r["ok_class"] for r in rows) / len(rows)
     recon = all(r["reconstructs"] for r in rows)
     print("class acc", acc, "all reconstruct", recon)
+    ART.mkdir(parents=True, exist_ok=True)
     (ART / "geex_v0_results.json").write_text(json.dumps(rows, indent=2, default=str))
     return rows
 
