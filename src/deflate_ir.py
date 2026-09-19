@@ -63,6 +63,21 @@ def execute(literals,commands,size,mode='grow'):
     if written.value!=size: raise ValueError('output length mismatch')
     return output.raw[:size]
 
-def decompress(data,max_output=64<<20,mode='grow'):
+def decompress_native(data,max_output=64<<20,mode='grow'):
+    """One-pass C RFC1951 parse + native expand. Opt-in; not the production path."""
+    import platform
+    if not 0<=max_output<=256<<20 or mode not in MODES: raise ValueError('invalid execution options')
+    if mode in ('asm','sse2') and platform.machine() not in ('x86_64','AMD64'):
+        raise ValueError('instruction set requires x86-64')
+    output=C.create_string_buffer(max(1,max_output));written=C.c_size_t()
+    if _library().nr_deflate(data,len(data),output,max_output,MODES[mode],C.byref(written)):
+        raise ValueError('malformed DEFLATE stream or output limit exceeded')
+    return output.raw[:written.value]
+
+def decompress(data,max_output=64<<20,mode='grow',parse='ir'):
+    if parse=='native':
+        return decompress_native(data,max_output,mode)
+    if parse!='ir':
+        raise ValueError('parse must be ir or native')
     literals,commands,size=tokenize(data,max_output)
     return execute(literals,commands,size,mode)
