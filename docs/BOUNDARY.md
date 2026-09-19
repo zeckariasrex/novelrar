@@ -40,12 +40,16 @@ handles on POSIX. Existing destinations, symlinks and hardlinks are not
 silently overwritten. Unsupported platforms fail closed. Caller-chosen root
 ancestors are outside this mechanism's scope.
 
-The existing HOST subprocess path still trusts installed extractors. It checks
-exit status, selectors, exact member paths and returned symlinks, but it is not
-a process sandbox and limits are not enforced during backend disk writes.
-Use isolation before processing hostile archives with that path. The optional
-py7zr backend writes through bounded memory sinks; its parser, dictionary and
-KDF allocation behavior remain the backend's responsibility.
+The HOST subprocess path still trusts installed extractors. It checks exit
+status, selectors, exact member paths and returned symlinks. `host_isolate`
+adds unprivileged namespaces and rlimits when available; it is not a process
+sandbox, and limits are not enforced during backend disk writes that occur
+before the receipt check. The optional py7zr backend writes through bounded
+memory sinks; its parser, dictionary and KDF allocation behavior remain the
+backend's responsibility.
+
+Compressed RAR remains HOST. See `docs/RAR_BITSTREAM.md` before any codec
+attempt. Public header fields are not that plan.
 
 `--strict` excludes HOST and OPTIONAL extraction. The audit checks provenance
 of successful receipts; PASS does not imply every archive member was extracted

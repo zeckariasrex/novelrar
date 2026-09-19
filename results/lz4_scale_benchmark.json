@@ -1,0 +1,19 @@
+{
+  "note": "Synthetic 64KiB/1MiB text-corpus medians from scripts/benchmark_scale.py. Tight max_output=len(data). FFI included. perf-stat unavailable.",
+  "deflate": {
+    "64KiB": {
+      "text": {
+        "python-ir-grow": {"MiB_per_second": 97.4},
+        "native-parse-grow": {"MiB_per_second": 139.3},
+        "zlib": {"MiB_per_second": 2147.4}
+      }
+    },
+    "1MiB": {
+      "text": {
+        "python-ir-grow": {"MiB_per_second": 105.7},
+        "native-parse-grow": {"MiB_per_second": 755.6},
+        "zlib": {"MiB_per_second": 979.8}
+      }
+    }
+  }
+}
