@@ -11,6 +11,9 @@ def _library():
     lib.nr_lz4.argtypes = [C.c_void_p, C.c_size_t, C.c_void_p, C.c_size_t,
                           C.c_size_t, C.c_int, C.POINTER(C.c_size_t)]
     lib.nr_lz4.restype = C.c_int
+    lib.nr_deflate.argtypes = [C.c_void_p, C.c_size_t, C.c_void_p, C.c_size_t,
+                               C.c_int, C.POINTER(C.c_size_t)]
+    lib.nr_deflate.restype = C.c_int
     return lib
 
 def decompress_block(data, max_output, prefix=b'', mode='grow'):
