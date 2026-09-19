@@ -49,6 +49,24 @@ def cmd_list(args) -> int:
     return 0
 
 
+def _safe_member_path(dest: Path, member_name: str):
+    """Return a contained output path, or None for an unsafe member.
+
+    Lexical ``..`` checks are not sufficient when an existing destination
+    component is a symlink. Resolve both paths before writing so extraction
+    cannot escape through a symlink prepared inside the output directory.
+    """
+    rel = Path(member_name.replace("\\", "/"))
+    if rel.is_absolute() or ".." in rel.parts or rel == Path("."):
+        return None
+    root = dest.resolve()
+    out = dest / rel
+    try:
+        out.resolve(strict=False).relative_to(root)
+    except ValueError:
+        return None
+    return out
+
 def cmd_extract(args) -> int:
     dest = Path(args.dest)
     rc = 0
@@ -66,13 +84,13 @@ def cmd_extract(args) -> int:
                       file=sys.stderr)
                 rc = 1
                 continue
-            # keep members inside dest: reject absolute paths and .. traversal
-            rel = Path(m.name.replace("\\", "/"))
-            if rel.is_absolute() or ".." in rel.parts:
+            # Keep members inside dest, including when a pre-existing path
+            # component is a symlink that points beyond the extraction root.
+            out = _safe_member_path(dest, m.name)
+            if out is None:
                 print(f"  skip {m.name}: unsafe member path", file=sys.stderr)
                 rc = 1
                 continue
-            out = dest / rel
             if m.is_dir:
                 out.mkdir(parents=True, exist_ok=True)
                 continue
