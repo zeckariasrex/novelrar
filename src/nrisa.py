@@ -82,7 +82,8 @@ def decode(blob: bytes, max_output: int = DEFAULT_LIMIT) -> bytes:
             n, dist = _le16(blob, i), _le16(blob, i + 2)
             a, b = blob[i + 4], blob[i + 5]
             i += 6
-            if n == 0 or dist == 0 or dist > len(out) or n > max_output - len(out):
+            if (n == 0 or dist == 0 or dist > len(out) or n > dist
+                    or n > max_output - len(out)):
                 raise ValueError('invalid axpy')
             if a == 0:
                 out.extend(bytes([b]) * n)
@@ -234,7 +235,12 @@ def encode(data: bytes) -> bytes:
 
 
 def decompress_native(blob: bytes, max_output: int = DEFAULT_LIMIT, mode: str = 'grow') -> bytes:
-    """Opt-in C executor. Falls back is not used; missing .so raises."""
+    """Opt-in C executor. There is no silent fallback: a missing or stale
+    ``build/libnovelrar.so`` raises instead of quietly decoding in Python.
+
+    The C core validates structure only. The plaintext digest is checked here
+    so that the native and pure-Python paths accept exactly the same streams.
+    """
     import ctypes as C
     import platform
     from native_lz4 import MODES, _library
@@ -244,14 +250,29 @@ def decompress_native(blob: bytes, max_output: int = DEFAULT_LIMIT, mode: str = 
         raise ValueError('requested instruction set requires x86-64')
     if not 0 <= max_output <= 256 << 20:
         raise ValueError('output limit must be in [0, 256 MiB]')
+    if len(blob) < 14 or blob[:4] != MAGIC:
+        raise ValueError('bad NRISA magic')
+    # Trust the header only as an allocation hint; the executor still refuses
+    # to write past the capacity it is handed.
+    usize = _le32(blob, 6)
+    if usize > max_output:
+        raise ValueError('unsupported version or output limit')
     lib = _library()
-    fn = lib.nr_isa
+    try:
+        fn = lib.nr_isa
+    except AttributeError as exc:
+        raise OSError('build/libnovelrar.so has no nr_isa; rebuild it with '
+                      'scripts/build_native.py') from exc
     fn.argtypes = [C.c_void_p, C.c_size_t, C.c_void_p, C.c_size_t,
                    C.c_int, C.POINTER(C.c_size_t)]
     fn.restype = C.c_int
-    out = C.create_string_buffer(max(1, max_output))
+    out = C.create_string_buffer(max(1, usize))
     written = C.c_size_t()
-    rc = fn(blob, len(blob), out, max_output, MODES[mode], C.byref(written))
+    rc = fn(blob, len(blob), out, usize, MODES[mode], C.byref(written))
     if rc:
         raise ValueError('malformed NRISA stream or output limit exceeded')
-    return out.raw[:written.value]
+    result = out.raw[:written.value]
+    if blob[5] & 1:
+        if hashlib.sha256(result).digest() != blob[-32:]:
+            raise ValueError('NRISA checksum mismatch')
+    return result

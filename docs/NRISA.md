@@ -64,7 +64,12 @@ AXPY  u8=3  u16 n  u16 dist  u8 a  u8 b
 ```
 
 Reject truncated input, trailing bytes, size mismatch, unknown tags,
-and digest failure.
+and digest failure. `nr_isa` validates structure only; the digest is verified
+by `nrisa.decompress_native`, so the native and pure-Python paths accept
+exactly the same set of streams.
+
+AXPY additionally requires $\ell \le d$. Both decoders enforce it, so the
+source span of every AXPY is final before the command runs.
 
 ## ISA mapping
 
@@ -80,6 +85,9 @@ and digest failure.
 ## What this is not
 
 Not a claim of universal compression. Header plus digest is 46 bytes before
-any command; tiny inputs grow. Not a RAR bitstream. Not a password scheme.
+any command; tiny inputs grow. Not a production encoder: `encode` searches
+roughly 80 candidate distances per position and runs an AXPY fit at each, so
+incompressible input costs about 1.2 kB/s in Python (~15 min per MiB).
+It is sized for fixtures and measurements, not for bulk data. Not a RAR bitstream. Not a password scheme.
 Measured Python prototype (header + digest included): repeat200 200→50,
 period3 240→57, ramp512 512→97, text450 450→99, affine-add 128→85.

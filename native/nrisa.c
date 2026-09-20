@@ -96,7 +96,10 @@ int nr_isa(const unsigned char *s, size_t n, unsigned char *out,
             if (i + 6 > n) return -1;
             unsigned len = le16(s + i), dist = le16(s + i + 2);
             unsigned a = s[i + 4], b = s[i + 5]; i += 6;
-            if (!len || !dist || dist > o || len > capacity - o) return -1;
+            /* len <= dist keeps the whole source span already final, which is
+               what lets the 16-byte PADDB/PSUBB path match the scalar one. */
+            if (!len || !dist || dist > o || len > dist ||
+                len > capacity - o) return -1;
             axpy_bytes(out + o, dist, len, a, b, mode);
             o += len;
             continue;
