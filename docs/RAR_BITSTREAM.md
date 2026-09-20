@@ -50,8 +50,8 @@ delegation, not a specification.
 
 ## Work items, in order, if compressed-RAR research is ever authorised
 
-1. Freeze the legal question in `docs/BOUNDARY.md` again. If the answer is
-   still "no in-tree codec", stop.
+1. Freeze the legal question explicitly. If the answer is still "no
+   in-tree codec", stop.
 2. Collect only public, dated documents. Quote the sentences that define
    tokens. Mark every gap as a gap. Do not fill gaps from a binary.
 3. Build a *known-plaintext corpus* without reading decoder source:
