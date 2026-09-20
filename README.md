@@ -8,7 +8,7 @@ novelty is claimed.
 
 `main` is the accepted line. See [status](docs/STATUS.md),
 [the implementation and measured-results report](docs/RESEARCH_REPORT.md),
-[format boundaries](docs/BOUNDARY.md), and [dependency provenance](docs/LICENSING.md).
+and [dependency provenance](docs/LICENSING.md).
 
 ## Implemented capabilities
 

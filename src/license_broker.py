@@ -2,7 +2,7 @@
 """Codec provenance registry and extraction receipts.
 
 Lanes describe implementation/dependency choices, not legal conclusions.
-See docs/LICENSING.md and docs/BOUNDARY.md for current policy and limitations."""
+See docs/LICENSING.md for current policy and limitations."""
 from __future__ import annotations
 
 import shutil

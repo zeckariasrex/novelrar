@@ -44,4 +44,4 @@ GitHub's review API rejects self-APPROVE on this account. The merge to
 2. Independently implemented RAR4 Unicode name decoding.
 3. Broader LZ4 corpora than the synthetic 1 MiB set, on bare metal with
    working perf counters.
-4. Execute the RAR bitstream plan only if BOUNDARY is explicitly revised.
+4. Execute the RAR bitstream plan only if the policy is explicitly revised.
