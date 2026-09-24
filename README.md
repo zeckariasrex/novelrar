@@ -99,3 +99,29 @@ allocation and equality-check overhead; see the report before interpreting them.
   reconstruct an original board from a model and XOR residual.
 - Historical tables under `results/` are experiments, not general compression
   claims. NA01 provides a separate conservative size-selection experiment.
+
+## Forensic host integration
+
+`src/forensic_bridge.py` provides version-1 JSON over stdout, taking bounded
+archive bytes on stdin. It never extracts files, runs external tools, accepts
+passwords, or includes decoded payloads in reports.
+
+```bash
+python src/forensic_bridge.py inspect-rar < archive.rar
+python src/forensic_bridge.py digest --codec lz4 < stream.lz4
+```
+
+RAR4/5 inspection is metadata-only: header CRCs and block bounds are checked,
+while `payloads_verified` is always false. Encrypted headers return
+`inspection_complete: false`; malformed/truncated input returns JSON with
+`ok: false` and a nonzero exit. Strict inspection requires an end block;
+legacy archives without one are rejected by this interface. The existing
+reader remains available with its default non-strict walk.
+
+Digest mode supports gzip, zlib, bzip2, XZ and LZ4. Hosts can compare the
+source SHA-256, decoded length and decoded SHA-256 with their own decoder.
+Limits: 64 MiB input/output, 1,000 RAR members and 4,100 header blocks.
+Only LZ4 accepts concatenated frames; the other digest profiles reject
+concatenation/trailing bytes. These are local differential checks, not
+interoperability certification. A host must also enforce a subprocess timeout
+and report-size cap. No compressed RAR decoder is added by this interface.

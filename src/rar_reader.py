@@ -99,23 +99,31 @@ def _rar4_name(raw: bytes, unicode_flag: bool) -> str:
         return raw.decode("cp437", "replace")
 
 
-def read_rar4(blob: bytes) -> RarArchive:
+def read_rar4(blob: bytes, *, metadata_only=False, strict=False, max_members=10000) -> RarArchive:
     arch = RarArchive(version="rar4")
     i = blob.find(RAR4_MAGIC)
     if i < 0:
         raise RarError("no RAR4 marker")
     i += len(RAR4_MAGIC)
     n = len(blob)
+    ended = False
+    blocks = 0
     while i + 7 <= n:
+        blocks += 1
+        if blocks > max_members * 4 + 100:
+            raise RarError("RAR block limit exceeded")
         _crc, htype, flags, hsize = struct.unpack_from("<HBHH", blob, i)
         if hsize < 7 or i + hsize > n:
+            if strict: raise RarError("invalid/truncated RAR4 header")
             arch.notes.append(f"bad header size {hsize} at {i}; stop")
             break
         if zlib.crc32(blob[i+2:i+hsize]) & 0xffff != _crc:
             raise RarError("RAR4 header CRC mismatch")
         kind = R4_TYPE.get(htype, f"0x{htype:02x}")
         add_size = 0
-        if flags & LONG_BLOCK and i + 11 <= n:
+        if flags & LONG_BLOCK and hsize < 11:
+            raise RarError("truncated RAR4 additional size")
+        if flags & LONG_BLOCK:
             add_size = struct.unpack_from("<I", blob, i + 7)[0]
         arch.notes.append(
             f"@{i} {kind} flags=0x{flags:04x} hsize={hsize} add={add_size}")
@@ -131,6 +139,7 @@ def read_rar4(blob: bytes) -> RarArchive:
             continue
         if htype == R4_END:
             arch.notes.append("end-of-archive block")
+            ended = True
             break
         if htype == R4_FILE:
             if hsize < 32 or (flags & LHD_LARGE and hsize < 40):
@@ -162,11 +171,18 @@ def read_rar4(blob: bytes) -> RarArchive:
                        "split_after": bool(flags & LHD_SPLIT_AFTER),
                        "salted": bool(flags & LHD_SALT)},
             )
-            _finish(m, blob)
+            if m.data_off + m.pack_size > n:
+                raise RarError("truncated RAR member data")
+            if len(arch.members) >= max_members:
+                raise RarError("RAR member limit exceeded")
+            if not metadata_only:
+                _finish(m, blob)
             arch.members.append(m)
             i = m.data_off + pack
             continue
         i += hsize + add_size
+    if strict and not ended and not arch.header_encrypted:
+        raise RarError("missing RAR end-of-archive block")
     return arch
 
 
@@ -184,20 +200,23 @@ def _read_vint(buf: bytes, off: int) -> tuple[int, int]:
     raise RarError("truncated vint")
 
 
-def _walk_extra(area: bytes) -> dict:
+def _walk_extra(area: bytes, *, strict=False) -> dict:
     """Extra-area records: <size vint><type vint><data>, size covers type+data."""
     seen, off = {}, 0
     while off < len(area):
         try:
             size, p = _read_vint(area, off)
         except RarError:
+            if strict: raise
             break
         if size == 0 or p + size > len(area):
+            if strict: raise RarError("invalid RAR5 extra record")
             break
         rec_end = p + size
         try:
-            rtype, q = _read_vint(area, p)
+            rtype, q = _read_vint(area[:rec_end], p)
         except RarError:
+            if strict: raise
             break
         seen[R5_EXTRA.get(rtype, f"type{rtype}")] = area[q:rec_end]
         if rec_end <= off:
@@ -206,42 +225,57 @@ def _walk_extra(area: bytes) -> dict:
     return seen
 
 
-def read_rar5(blob: bytes) -> RarArchive:
+def read_rar5(blob: bytes, *, metadata_only=False, strict=False, max_members=10000) -> RarArchive:
     arch = RarArchive(version="rar5")
     i = blob.find(RAR5_MAGIC)
     if i < 0:
         raise RarError("no RAR5 marker")
     i += len(RAR5_MAGIC)
     n = len(blob)
+    ended = False
+    blocks = 0
     while i + 5 <= n:
+        blocks += 1
+        if blocks > max_members * 4 + 100:
+            raise RarError("RAR block limit exceeded")
         start = i
         i += 4  # header CRC32
         try:
             hsize, hstart = _read_vint(blob, i)
         except RarError as e:
+            if strict: raise
             arch.notes.append(str(e))
             break
         if hsize <= 0 or hstart + hsize > n:
+            if strict: raise RarError("invalid/truncated RAR5 header")
             arch.notes.append(f"bad header size {hsize} at {start}; stop")
             break
         hend = hstart + hsize
         want_crc = struct.unpack_from("<I",blob,start)[0]
         if zlib.crc32(blob[start+4:hend]) & 0xffffffff != want_crc:
             raise RarError("RAR5 header CRC mismatch")
+        header = memoryview(blob)[:hend]
         try:
-            htype, j = _read_vint(blob, hstart)
-            hflags, j = _read_vint(blob, j)
+            htype, j = _read_vint(header, hstart)
+            hflags, j = _read_vint(header, j)
             extra_sz = data_sz = 0
             if hflags & HF_EXTRA:
-                extra_sz, j = _read_vint(blob, j)
+                extra_sz, j = _read_vint(header, j)
             if hflags & HF_DATA:
-                data_sz, j = _read_vint(blob, j)
+                data_sz, j = _read_vint(header, j)
         except RarError as e:
+            if strict: raise
             arch.notes.append(f"header parse: {e}")
             break
         kind = R5_TYPE.get(htype, f"type{htype}")
         arch.notes.append(
             f"@{start} {kind} flags=0x{hflags:x} extra={extra_sz} data={data_sz}")
+        if extra_sz > hend-j or hend+data_sz > n:
+            raise RarError("RAR5 block bounds invalid")
+        if htype == R5_MAIN:
+            archive_flags, _ = _read_vint(header[:hend-extra_sz], j)
+            arch.volume = bool(archive_flags & 1)
+            arch.solid = bool(archive_flags & 4)
         if htype == R5_CRYPT:
             arch.header_encrypted = True
             arch.notes.append(
@@ -249,29 +283,30 @@ def read_rar5(blob: bytes) -> RarArchive:
             break
         if htype == R5_END:
             arch.notes.append("end-of-archive block")
+            ended = True
             break
-        if extra_sz > hend-j or hend+data_sz > n:
-            raise RarError("RAR5 block bounds invalid")
         if htype in (R5_FILE, R5_SERVICE):
             extra = blob[hend - extra_sz:hend] if extra_sz else b""
-            records = _walk_extra(extra)
+            records = _walk_extra(extra, strict=strict)
+            header = memoryview(blob)[:hend-extra_sz]
             try:
-                fflags, k = _read_vint(blob, j)
-                unp, k = _read_vint(blob, k)
-                attr, k = _read_vint(blob, k)
+                fflags, k = _read_vint(header, j)
+                unp, k = _read_vint(header, k)
+                attr, k = _read_vint(header, k)
                 if fflags & FF_MTIME:
                     k += 4
                 crc = None
                 if fflags & FF_CRC32:
-                    crc = struct.unpack_from("<I", blob, k)[0]
+                    crc = struct.unpack_from("<I", header, k)[0]
                     k += 4
-                comp, k = _read_vint(blob, k)
-                _host, k = _read_vint(blob, k)
-                nlen, k = _read_vint(blob, k)
+                comp, k = _read_vint(header, k)
+                _host, k = _read_vint(header, k)
+                nlen, k = _read_vint(header, k)
                 if k+nlen > hend-extra_sz:
                     raise RarError("RAR5 filename exceeds header body")
                 name = blob[k:k + nlen].decode("utf-8", "replace")
             except (RarError, struct.error) as e:
+                if strict: raise RarError(f"invalid RAR5 file header: {e}") from e
                 arch.notes.append(f"{kind} header body: {e}")
                 i = hend + data_sz
                 continue
@@ -295,11 +330,18 @@ def read_rar5(blob: bytes) -> RarArchive:
                        "rar_version": comp & 0x3F,
                        "extra_records": sorted(records)},
             )
-            _finish(m, blob)
+            if m.data_off + m.pack_size > n:
+                raise RarError("truncated RAR member data")
+            if len(arch.members) >= max_members:
+                raise RarError("RAR member limit exceeded")
+            if not metadata_only:
+                _finish(m, blob)
             arch.members.append(m)
             i = hend + data_sz
             continue
         i = hend + data_sz
+    if strict and not ended and not arch.header_encrypted:
+        raise RarError("missing RAR end-of-archive block")
     return arch
 
 
@@ -334,12 +376,21 @@ def _finish(m: RarMember, blob: bytes) -> None:
     m.payload = data
 
 
-def read(blob: bytes) -> RarArchive:
-    if RAR5_MAGIC in blob[:1 << 20]:
-        return read_rar5(blob)
-    if RAR4_MAGIC in blob[:1 << 20]:
-        return read_rar4(blob)
-    raise RarError("no RAR marker in the first megabyte")
+def read(blob: bytes, *, metadata_only=False, strict=False, max_members=10000) -> RarArchive:
+    """Read a RAR container; metadata_only never decodes/checks member payloads.
+
+    strict requires a complete structural walk (or an explicit encrypted-header
+    result). Embedded/SFX archives use the first marker, not a signature inside
+    a later member's data. Member and block limits bound metadata allocation.
+    """
+    head = blob[:1 << 20]
+    markers = [(head.find(magic), reader) for magic, reader in
+               ((RAR4_MAGIC, read_rar4), (RAR5_MAGIC, read_rar5))]
+    markers = [(offset, reader) for offset, reader in markers if offset >= 0]
+    if not markers:
+        raise RarError("no RAR marker in the first megabyte")
+    _, reader = min(markers, key=lambda item: item[0])
+    return reader(blob, metadata_only=metadata_only, strict=strict, max_members=max_members)
 
 
 def is_rar(blob: bytes) -> bool:
