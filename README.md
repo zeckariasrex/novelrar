@@ -125,3 +125,10 @@ Only LZ4 accepts concatenated frames; the other digest profiles reject
 concatenation/trailing bytes. These are local differential checks, not
 interoperability certification. A host must also enforce a subprocess timeout
 and report-size cap. No compressed RAR decoder is added by this interface.
+
+## RAR supplied-password extraction and GPU AES
+
+`src/rar_extract.py` now provides bounded RAR4/RAR5 extraction/decryption, with an
+original AMD/NVIDIA OpenCL AES path, CPU reference checks and original member
+integrity verification. Compressed decoding remains CPU-based. See
+[the exact support matrix, dependencies and tests](docs/RAR-ACCELERATION.md).
