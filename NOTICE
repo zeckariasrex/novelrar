@@ -11,7 +11,9 @@ terms) and cryptography (Apache-2.0 OR BSD-3-Clause, plus dependency terms).
 python-lz4 and an installed libarchive are independent test oracles.
 
 Supplied-password ZIP/7z operations and the distinct NRX1 authenticated
-password envelope are supported. RAR password decryption and RAR compressed
-encoding/decoding are not implemented in-tree. No password search is included.
+password envelope are supported. RAR supplied-password AES decryption is implemented in-tree, including an original
+OpenCL kernel. Compressed RAR decoding uses system libarchive or an explicitly
+selected installed decoder. RAR compressed encoding and password search are not
+implemented. See docs/RAR-ACCELERATION.md for exact bounds and test provenance.
 
 See docs/RESEARCH_REPORT.md for tested scope, limitations, and sources.

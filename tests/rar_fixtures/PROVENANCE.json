@@ -1,0 +1,101 @@
+{
+  "purpose": "Public-source and independently decoded provenance for test-only archives. No user evidence, service credentials, or private files are included.",
+  "fixtures": [
+    {
+      "archive": "rar5-psw.rar",
+      "archive_sha256": "b6840e95152a1c3b5acd736dc34f988509866f04158b67da1b5a29e166a31355",
+      "origin": "public ISC-licensed rarfile fixture",
+      "public_source_url": "https://github.com/markokr/rarfile/blob/d2f7df6fc843dae356fd6b0a85971dc36fd6e757/test/files/rar5-psw.rar",
+      "recovered_payload": "ASCII lines 000 through 511, each followed by LF",
+      "payload_copies": 2,
+      "per_payload_sha256": "2eaebb4c18cdef7f20089f8a2fa3475bc59c2a193f66e2f1513609a4bef13e22",
+      "test_password_status": "public upstream test password",
+      "independent_reference_decode": "passed; byte-for-byte equality with fixed nonsensitive text",
+      "customer_evidence_or_credentials": false
+    },
+    {
+      "archive": "rar5-hpsw.rar",
+      "archive_sha256": "9aff93dfd85b1e44daeef233105831999a2076299997b7790e1cf1fd557a4457",
+      "origin": "public ISC-licensed rarfile fixture",
+      "public_source_url": "https://github.com/markokr/rarfile/blob/d2f7df6fc843dae356fd6b0a85971dc36fd6e757/test/files/rar5-hpsw.rar",
+      "recovered_payload": "ASCII lines 000 through 511, each followed by LF",
+      "payload_copies": 2,
+      "per_payload_sha256": "2eaebb4c18cdef7f20089f8a2fa3475bc59c2a193f66e2f1513609a4bef13e22",
+      "test_password_status": "public upstream test password",
+      "independent_reference_decode": "passed; byte-for-byte equality with fixed nonsensitive text",
+      "customer_evidence_or_credentials": false
+    },
+    {
+      "archive": "rar5-psw-blake.rar",
+      "archive_sha256": "6f6914979dfdc56b323f362f8fbead9ab70105b5f8590b7d3a6fa3a7cdd9540c",
+      "origin": "public ISC-licensed rarfile fixture",
+      "public_source_url": "https://github.com/markokr/rarfile/blob/d2f7df6fc843dae356fd6b0a85971dc36fd6e757/test/files/rar5-psw-blake.rar",
+      "recovered_payload": "ASCII lines 000 through 511, each followed by LF",
+      "payload_copies": 2,
+      "per_payload_sha256": "2eaebb4c18cdef7f20089f8a2fa3475bc59c2a193f66e2f1513609a4bef13e22",
+      "test_password_status": "public upstream test password",
+      "independent_reference_decode": "passed; byte-for-byte equality with fixed nonsensitive text",
+      "customer_evidence_or_credentials": false
+    },
+    {
+      "archive": "rar5-solid.rar",
+      "archive_sha256": "d97d23b2edee9a7daa49e45015ea72aa3f162efeb0abaf559740ab797276203b",
+      "origin": "public ISC-licensed rarfile fixture",
+      "public_source_url": "https://github.com/markokr/rarfile/blob/d2f7df6fc843dae356fd6b0a85971dc36fd6e757/test/files/rar5-solid.rar",
+      "recovered_payload": "ASCII lines 000 through 511, each followed by LF",
+      "payload_copies": 2,
+      "per_payload_sha256": "2eaebb4c18cdef7f20089f8a2fa3475bc59c2a193f66e2f1513609a4bef13e22",
+      "test_password_status": "not encrypted",
+      "independent_reference_decode": "passed; byte-for-byte equality with fixed nonsensitive text",
+      "customer_evidence_or_credentials": false
+    },
+    {
+      "archive": "rar3-solid.rar",
+      "archive_sha256": "0944932546b994f282cdb3ac724112c312d406b4c1aecfe1eaf9e734e8f96aa2",
+      "origin": "public ISC-licensed rarfile fixture",
+      "public_source_url": "https://github.com/markokr/rarfile/blob/d2f7df6fc843dae356fd6b0a85971dc36fd6e757/test/files/rar3-solid.rar",
+      "recovered_payload": "ASCII lines 000 through 511, each followed by LF",
+      "payload_copies": 2,
+      "per_payload_sha256": "2eaebb4c18cdef7f20089f8a2fa3475bc59c2a193f66e2f1513609a4bef13e22",
+      "test_password_status": "not encrypted",
+      "independent_reference_decode": "passed; byte-for-byte equality with fixed nonsensitive text",
+      "customer_evidence_or_credentials": false
+    },
+    {
+      "archive": "rar4-aes-compressed.rar",
+      "archive_sha256": "bdab69120b5f3ba151172473038ad68fd6e90f1752b3d4993886d7573836313a",
+      "origin": "generated solely for this implementation test",
+      "public_source_url": null,
+      "recovered_payload": "ASCII lines 000 through 511, each followed by LF",
+      "payload_copies": 1,
+      "per_payload_sha256": "2eaebb4c18cdef7f20089f8a2fa3475bc59c2a193f66e2f1513609a4bef13e22",
+      "test_password_status": "new synthetic fixture password; no account/service use",
+      "independent_reference_decode": "passed; byte-for-byte equality with fixed nonsensitive text",
+      "customer_evidence_or_credentials": false
+    },
+    {
+      "archive": "rar4-aes-compressed-headers.rar",
+      "archive_sha256": "6952c4a13607a971b205da92716a8ff3020bce166c6ffd81ad0501de2b943b1e",
+      "origin": "generated solely for this implementation test",
+      "public_source_url": null,
+      "recovered_payload": "ASCII lines 000 through 511, each followed by LF",
+      "payload_copies": 1,
+      "per_payload_sha256": "2eaebb4c18cdef7f20089f8a2fa3475bc59c2a193f66e2f1513609a4bef13e22",
+      "test_password_status": "new synthetic fixture password; no account/service use",
+      "independent_reference_decode": "passed; byte-for-byte equality with fixed nonsensitive text",
+      "customer_evidence_or_credentials": false
+    },
+    {
+      "archive": "rar7-header.rar",
+      "archive_sha256": "775c14bcfc21d61e8c0129bc6f5dcc6eff541920c8b1a161b539ecacc34cd5f4",
+      "origin": "generated solely for this implementation test",
+      "public_source_url": null,
+      "recovered_payload": "Literal \"Modern RAR forensic extraction.\\n\" repeated 1000 times",
+      "payload_copies": 1,
+      "per_payload_sha256": "328ae34ff0bbb6a356259b88939a06f96ec732cda2faeac56f09705f9fa19a8c",
+      "test_password_status": "new synthetic fixture password; no account/service use",
+      "independent_reference_decode": "passed; byte-for-byte equality with fixed nonsensitive text",
+      "customer_evidence_or_credentials": false
+    }
+  ]
+}

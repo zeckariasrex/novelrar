@@ -1,2 +1,2 @@
-# Optional NRX1 authenticated envelopes; not needed for archive reading.
+# Optional NRX1 envelopes and supplied-password RAR extraction/decryption.
 cryptography>=43
